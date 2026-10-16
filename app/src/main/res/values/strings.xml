@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EduMate</string>
+    <string name="app_tagline">Teach to Master · AI Student Learning Partner</string>
+
+    <!-- Navigation & Titles -->
+    <string name="title_home">EduMate Home</string>
+    <string name="title_topic_selection">Select Topic</string>
+    <string name="title_session">Teaching Session</string>
+    <string name="title_feedback">Rubric Evaluation</string>
+    <string name="title_history">Learning History</string>
+    <string name="title_settings">Settings &amp; About</string>
+
+    <!-- Home Screen -->
+    <string name="home_welcome_title">Ready to teach?</string>
+    <string name="home_welcome_subtitle">Explain concepts in your own words to your AI student. Receive objective, rubric-based feedback.</string>
+    <string name="btn_start_new_session">Start Teaching Session</string>
+    <string name="btn_view_history">Session History</string>
+    <string name="home_stats_title">Your Progress</string>
+    <string name="stat_sessions_completed">Sessions Completed</string>
+    <string name="stat_average_score">Average Score</string>
+    <string name="recent_sessions_title">Recent Sessions</string>
+    <string name="no_recent_sessions">No sessions yet. Teach your first topic today!</string>
+
+    <!-- Topic Selection -->
+    <string name="topic_choose_preset">Choose a Topic to Teach</string>
+    <string name="topic_custom_label">Or enter custom topic:</string>
+    <string name="topic_custom_hint">e.g., Photosynthesis, Binary Search, Special Relativity</string>
+    <string name="persona_choose_label">Select Student Persona:</string>
+    <string name="persona_beginner">Curious Beginner</string>
+    <string name="persona_beginner_desc">Asks fundamental questions to build basic intuition.</string>
+    <string name="persona_skeptical">Skeptical Peer</string>
+    <string name="persona_skeptical_desc">Challenges edge cases, doubts vague claims, and demands examples.</string>
+    <string name="persona_exam">Exam Grader Style</string>
+    <string name="persona_exam_desc">Demands precise definitions, mechanisms, and formal terminology.</string>
+    <string name="btn_begin_teaching">Begin Teaching</string>
+    <string name="error_empty_topic">Please select or enter a topic to teach.</string>
+
+    <!-- Session Screen -->
+    <string name="session_turn_format">Turn %1$d of %2$d</string>
+    <string name="session_input_hint">Type your explanation here...</string>
+    <string name="btn_send">Send</string>
+    <string name="btn_voice_input">Voice Input</string>
+    <string name="btn_finish_session">Finish &amp; Evaluate</string>
+    <string name="btn_tts_replay">Replay Question</string>
+    <string name="btn_tts_stop">Stop Audio</string>
+    <string name="listening_prompt">Listening... speak your explanation</string>
+    <string name="evaluating_progress">Evaluating explanation against rubric...</string>
+    <string name="ai_student_typing">AI Student is thinking...</string>
+    <string name="confirm_finish_title">Finish Teaching Session?</string>
+    <string name="confirm_finish_message">Are you ready to submit your explanations for rubric-based scoring?</string>
+    <string name="action_finish">Evaluate Now</string>
+    <string name="action_continue">Continue Teaching</string>
+
+    <!-- Feedback Screen -->
+    <string name="feedback_overall_header">Overall Performance</string>
+    <string name="feedback_estimate_disclaimer" formatted="false">Scores are estimated using Gemini rubric analysis (Accuracy 40%, Completeness 25%, Clarity 20%, Reasoning 15%).</string>
+    <string name="rubric_accuracy">Accuracy (40%)</string>
+    <string name="rubric_completeness">Completeness (25%)</string>
+    <string name="rubric_clarity">Clarity (20%)</string>
+    <string name="rubric_reasoning">Reasoning (15%)</string>
+    <string name="section_feedback_summary">Summary Feedback</string>
+    <string name="section_strengths">Identified Strengths</string>
+    <string name="section_improvements">Areas for Improvement</string>
+    <string name="section_misconceptions">Detected Misconceptions &amp; Citations</string>
+    <string name="no_misconceptions">No factual misconceptions detected. Outstanding work!</string>
+    <string name="btn_review_conversation">Review Full Chat</string>
+    <string name="btn_back_to_home">Back to Home</string>
+
+    <!-- History Screen -->
+    <string name="history_filter_hint">Search topic or keyword...</string>
+    <string name="btn_sync_now">Sync to Cloud</string>
+    <string name="sync_status_synced">Synced</string>
+    <string name="sync_status_pending">Pending Sync</string>
+    <string name="dialog_delete_title">Delete Session</string>
+    <string name="dialog_delete_message">Are you sure you want to remove this session from history?</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="empty_history">No matching history found.</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_voice_header">Voice &amp; Audio</string>
+    <string name="setting_tts_auto_play">Auto-play AI Student Responses</string>
+    <string name="setting_tts_auto_play_summary">Automatically speak incoming questions aloud</string>
+    <string name="setting_language">Voice Recognition Language</string>
+    <string name="settings_data_header">Data &amp; Privacy</string>
+    <string name="setting_clear_data">Clear Local History</string>
+    <string name="setting_clear_data_summary">Permanently remove all local sessions</string>
+    <string name="privacy_notice_title">Privacy Notice</string>
+    <string name="privacy_notice_content">EduMate sends topic and conversation text to the AI model solely to generate student questions and rubric feedback. Your data is not sold or shared with third parties.</string>
+    <string name="settings_about_header">About EduMate</string>
+    <string name="settings_version">Version 1.0.0 (Course Project Build)</string>
+
+    <!-- Permissions -->
+    <string name="permission_audio_rationale">Audio recording permission is needed to use voice input when explaining topics.</string>
+
+    <!-- Common Actions -->
+    <string name="action_settings">Settings</string>
+    <string name="action_retry">Retry</string>
+    <string name="network_offline_banner">You are currently offline. Local saving and offline fallback evaluation remain fully available.</string>
+</resources>
