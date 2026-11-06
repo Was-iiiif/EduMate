@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -44,11 +46,8 @@ public class AIRepository {
     public static final String PREFS_NAME = "edumate_ai_prefs";
     public static final String KEY_GEMINI_API_KEY = "gemini_api_key";
 
-    private static final String[] GEMINI_MODELS = new String[] {
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash"
+    private static final String[] GEMINI_MODELS = {
+            "gemini-3.8-flash"
     };
 
     public interface StudentReplyCallback {
@@ -134,6 +133,18 @@ public class AIRepository {
         return !getApiKey().isEmpty();
     }
 
+    public boolean isNetworkConnected() {
+        if (context == null) return true;
+        try {
+            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                NetworkInfo ni = cm.getActiveNetworkInfo();
+                return ni != null && ni.isConnected();
+            }
+        } catch (Throwable ignored) {}
+        return true;
+    }
+
     public void testApiKey(String apiKey, TestApiKeyCallback callback) {
         executors.networkIO().execute(() -> {
             String cleanKey = sanitizeApiKey(apiKey);
@@ -141,17 +152,56 @@ public class AIRepository {
                 postToMain(() -> callback.onError("API Key is empty. Please enter a valid Gemini API key."));
                 return;
             }
+            if (!isNetworkConnected()) {
+                postToMain(() -> callback.onError("No Internet Connection: Your device appears to be offline.\n\nPlease connect to active Wi-Fi or Mobile Data and try again."));
+                return;
+            }
             try {
                 String modelUsed = callGeminiPing(cleanKey);
                 postToMain(() -> callback.onSuccess(modelUsed));
             } catch (Exception e) {
-                String msg = e.getMessage() != null ? e.getMessage() : "Unknown error connecting to Gemini";
+                String msg = formatNetworkException(e);
                 postToMain(() -> callback.onError(msg));
             }
         });
     }
 
     private String callGeminiPing(String apiKey) throws Exception {
+        // Fast path 1: Instant metadata check via models.list (GET).
+        // Validates API key, network reachability, and Google identity in < 500ms without model inference latency.
+        String listEndpoint = "https://generativelanguage.googleapis.com/v1beta/models?key=" + apiKey;
+        try {
+            URL url = new URL(listEndpoint);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("x-goog-api-key", apiKey);
+            applyAndroidCertHeaders(conn);
+            conn.setConnectTimeout(20000);
+            conn.setReadTimeout(20000);
+
+            int respCode = conn.getResponseCode();
+            if (respCode == 200) {
+                String body = readStream(conn.getInputStream());
+                for (String preferred : GEMINI_MODELS) {
+                    if (body.contains(preferred)) {
+                        return preferred;
+                    }
+                }
+                return "gemini-1.5-flash";
+            } else {
+                String errorBody = readStream(conn.getErrorStream());
+                String formatted = formatApiError(respCode, errorBody);
+                Log.e(TAG, "models.list check failed with code " + respCode + ": " + formatted);
+                throw new IOException(formatted);
+            }
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().startsWith("Gemini")) {
+                throw e;
+            }
+            Log.w(TAG, "models.list failed (" + e.getMessage() + "), attempting direct ping fallback");
+        }
+
+        // Fast path 2: Direct minimal token generation with generous 20s timeout
         JsonObject root = new JsonObject();
         JsonArray contents = new JsonArray();
         JsonObject turn = new JsonObject();
@@ -180,8 +230,8 @@ public class AIRepository {
                 conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 conn.setRequestProperty("x-goog-api-key", apiKey);
                 applyAndroidCertHeaders(conn);
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(12000);
+                conn.setConnectTimeout(20000);
+                conn.setReadTimeout(25000);
                 conn.setDoOutput(true);
 
                 try (OutputStream os = conn.getOutputStream()) {
@@ -776,8 +826,8 @@ public class AIRepository {
                 conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 conn.setRequestProperty("x-goog-api-key", cleanKey);
                 applyAndroidCertHeaders(conn);
-                conn.setConnectTimeout(12000);
-                conn.setReadTimeout(18000);
+                conn.setConnectTimeout(20000);
+                conn.setReadTimeout(25000);
                 conn.setDoOutput(true);
 
                 try (OutputStream os = conn.getOutputStream()) {
@@ -884,8 +934,8 @@ public class AIRepository {
                 conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 conn.setRequestProperty("x-goog-api-key", cleanKey);
                 applyAndroidCertHeaders(conn);
-                conn.setConnectTimeout(14000);
-                conn.setReadTimeout(20000);
+                conn.setConnectTimeout(20000);
+                conn.setReadTimeout(30000);
                 conn.setDoOutput(true);
 
                 try (OutputStream os = conn.getOutputStream()) {
@@ -1031,6 +1081,41 @@ public class AIRepository {
             return "Gemini 429: Rate limit exceeded. Please wait a moment.";
         }
         return "Gemini HTTP " + respCode + (!detail.isEmpty() ? ": " + detail : "");
+    }
+
+    public static String formatNetworkException(Throwable t) {
+        if (t == null) return "Unknown network error.";
+        String msg = t.getMessage();
+        if (msg != null && (msg.startsWith("Gemini") || msg.startsWith("No Internet") || msg.startsWith("Connection"))) {
+            return msg;
+        }
+
+        String lower = msg != null ? msg.toLowerCase(Locale.ROOT) : "";
+        if (t instanceof java.net.SocketTimeoutException || lower.contains("timeout") || lower.contains("timed out")) {
+            return "Connection Timed Out: The request to Google Gemini API took too long to respond.\n\n"
+                    + "Troubleshooting:\n"
+                    + "• Your internet connection may be slow or unstable.\n"
+                    + "• Try switching between Wi-Fi and Mobile Data.\n"
+                    + "• If using a VPN, proxy, or Private DNS (e.g. AdGuard), try disabling it temporarily.\n"
+                    + "• EduMate can continue working 100% offline with its built-in adaptive student!";
+        }
+
+        if (t instanceof java.net.UnknownHostException || lower.contains("unable to resolve host") || lower.contains("no address")) {
+            return "No Internet Connection: Could not resolve generativelanguage.googleapis.com.\n\n"
+                    + "Troubleshooting:\n"
+                    + "• Please verify that your phone is connected to active Wi-Fi or Mobile Data.\n"
+                    + "• Check if websites open in your phone's browser.";
+        }
+
+        if (t instanceof java.net.ConnectException) {
+            return "Connection Refused: Could not connect to Google Gemini servers.\n\nPlease check your network connection or firewall.";
+        }
+
+        if (t instanceof javax.net.ssl.SSLException) {
+            return "SSL Handshake Failed: Unable to establish a secure connection.\n\nPlease check that your device's date and time are accurate.";
+        }
+
+        return msg != null && !msg.isEmpty() ? msg : "Network error connecting to Gemini API.";
     }
 
     private static String readStream(InputStream is) {

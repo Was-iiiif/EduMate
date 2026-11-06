@@ -117,4 +117,14 @@ public class AIRepositoryStudentReplyTest {
         String formattedBlocked = AIRepository.formatApiError(403, blockedJson);
         assertTrue(formattedBlocked.contains("restriction"));
     }
+
+    @Test
+    public void testFormatNetworkException_handlesTimeoutAndOffline() {
+        String timeoutMsg = AIRepository.formatNetworkException(new java.net.SocketTimeoutException("timeout"));
+        assertTrue(timeoutMsg.contains("Connection Timed Out"));
+        assertTrue(timeoutMsg.contains("Troubleshooting:"));
+
+        String dnsMsg = AIRepository.formatNetworkException(new java.net.UnknownHostException("Unable to resolve host"));
+        assertTrue(dnsMsg.contains("No Internet Connection"));
+    }
 }

@@ -124,19 +124,38 @@ public class SettingsActivity extends AppCompatActivity {
             public void onError(String errorMessage) {
                 binding.btnTestApiKey.setEnabled(true);
                 binding.btnSaveApiKey.setEnabled(true);
-                binding.tvApiKeyStatus.setText("✗ " + errorMessage);
+
+                String shortStatus = errorMessage;
+                if (shortStatus != null && shortStatus.contains("\n")) {
+                    shortStatus = shortStatus.substring(0, shortStatus.indexOf("\n")).trim();
+                }
+                binding.tvApiKeyStatus.setText("✗ " + shortStatus);
                 binding.tvApiKeyStatus.setTextColor(0xFFDC2626);
 
-                new AlertDialog.Builder(SettingsActivity.this)
-                        .setTitle("Gemini API Error")
-                        .setMessage(errorMessage + "\n\nTroubleshooting Guide:\n"
-                                + "• Verify your key at: https://aistudio.google.com/app/apikey\n"
-                                + "• In Google Cloud Console -> Credentials -> API Key:\n"
-                                + "  - Set Application Restrictions to 'None'\n"
-                                + "  - Ensure 'Generative Language API' is enabled\n"
-                                + "• If you don't have a key, leave it empty to use EduMate's adaptive offline student!")
-                        .setPositiveButton("OK", null)
-                        .show();
+                boolean isNetworkIssue = errorMessage != null && (
+                        errorMessage.contains("Timed Out")
+                                || errorMessage.contains("Internet Connection")
+                                || errorMessage.contains("Network")
+                                || errorMessage.contains("Connection Refused")
+                );
+
+                String dialogTitle = isNetworkIssue ? "Network Connection Issue" : "Gemini API Error";
+
+                AlertDialog.Builder builder = new AlertDialog.Builder(SettingsActivity.this)
+                        .setTitle(dialogTitle)
+                        .setPositiveButton("OK", null);
+
+                if (errorMessage != null && errorMessage.contains("Troubleshooting:")) {
+                    builder.setMessage(errorMessage);
+                } else {
+                    builder.setMessage(errorMessage + "\n\nTroubleshooting Guide:\n"
+                            + "• Verify your key at: https://aistudio.google.com/app/apikey\n"
+                            + "• In Google Cloud Console -> Credentials -> API Key:\n"
+                            + "  - Set Application Restrictions to 'None'\n"
+                            + "  - Ensure 'Generative Language API' is enabled\n"
+                            + "• If you don't have a key, leave it empty to use EduMate's adaptive offline student!");
+                }
+                builder.show();
             }
         });
     }
