@@ -216,9 +216,10 @@
                     android:padding="16dp">
 
                     <TextView
+                        android:id="@+id/tv_account_label"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Anonymous User ID"
+                        android:text="Firebase Account"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
 
@@ -233,14 +234,28 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btn_clear_data"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/setting_clear_data"
-                        android:textColor="@color/score_poor"
-                        app:strokeColor="@color/score_poor" />
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_sign_out"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Sign Out" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_clear_data"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/setting_clear_data"
+                            android:textColor="@color/score_poor"
+                            app:strokeColor="@color/score_poor" />
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

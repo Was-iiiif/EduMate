@@ -40,6 +40,9 @@ public class SessionRepository {
     public void insertSession(Session session, Callback<Long> callback) {
         executors.diskIO().execute(() -> {
             long rowId = sessionDao.insertSession(session);
+            try {
+                FirestoreRepository.getInstance().syncSession(session, null);
+            } catch (Throwable ignored) {}
             if (callback != null) {
                 executors.mainThread().execute(() -> callback.onResult(rowId));
             }
@@ -49,6 +52,9 @@ public class SessionRepository {
     public void updateSession(Session session, Callback<Integer> callback) {
         executors.diskIO().execute(() -> {
             int updated = sessionDao.updateSession(session);
+            try {
+                FirestoreRepository.getInstance().syncSession(session, null);
+            } catch (Throwable ignored) {}
             if (callback != null) {
                 executors.mainThread().execute(() -> callback.onResult(updated));
             }
@@ -92,6 +98,9 @@ public class SessionRepository {
     public void insertMessage(Message message, Callback<Long> callback) {
         executors.diskIO().execute(() -> {
             long id = sessionDao.insertMessage(message);
+            try {
+                FirestoreRepository.getInstance().syncMessage(message.getSessionId(), message, 1, null);
+            } catch (Throwable ignored) {}
             if (callback != null) {
                 executors.mainThread().execute(() -> callback.onResult(id));
             }
@@ -117,6 +126,10 @@ public class SessionRepository {
     public void completeSessionWithEvaluation(Session session, Evaluation eval, Callback<Boolean> callback) {
         executors.diskIO().execute(() -> {
             boolean success = sessionDao.completeSessionWithEvaluation(session, eval);
+            try {
+                FirestoreRepository.getInstance().syncSession(session, null);
+                FirestoreRepository.getInstance().syncEvaluation(session.getId(), eval, null);
+            } catch (Throwable ignored) {}
             if (callback != null) {
                 executors.mainThread().execute(() -> callback.onResult(success));
             }

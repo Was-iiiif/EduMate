@@ -15,15 +15,20 @@
         android:windowSoftInputMode="adjustResize"
         android:theme="@style/Theme.EduMate">
 
-        <!-- Main Home Screen -->
+        <!-- Login / Authentication Screen (Launcher Entry Point) -->
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".ui.LoginActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Main Home Screen -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="false" />
 
         <!-- Topic Selection Screen -->
         <activity

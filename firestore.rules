@@ -1,0 +1,262 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: /users/{userId}
+// Document ID: Firebase Auth UID matching the authenticated user
+// Fields:
+//   - email: string (required, valid email address format, 3-254 chars) - Learner email
+//   - displayName: string (required, 1-100 chars) - Learner display name
+//   - createdAt: timestamp (required, immutable) - Account creation timestamp
+//   - lastActive: timestamp (required) - Timestamp of last user activity
+//   - userId / uid / id: string (optional, if present must match userId, immutable) - Owner UID reference
+//
+// Collection: /users/{userId}/sessions/{sessionId}
+// Document ID: Session UUID
+// Fields:
+//   - topic: string (required, 1-200 chars) - Subject or topic taught by the learner
+//   - persona: string (required, 1-60 chars) - AI student persona (e.g., BEGINNER, SKEPTICAL_PEER, EXAM_STYLE)
+//   - createdAt: timestamp (required, immutable) - Session creation timestamp
+//   - overallScore: number (required, range 0.0 to 100.0) - Weighted rubric score
+//   - turnCount: int (required, range 0 to 1000) - Number of conversational turns completed
+//   - sessionId / id: string (optional, if present must match sessionId, immutable) - Session ID reference
+//   - status: string (optional, allowed: 'IN_PROGRESS', 'COMPLETED') - Session lifecycle status
+//
+// Collection: /users/{userId}/sessions/{sessionId}/messages/{messageId}
+// Document ID: Unique message identifier or numeric sequence ID
+// Fields:
+//   - sender: string (required, allowed: 'learner' or 'student') - Originator of the chat message
+//   - messageText: string (required, 1-10000 chars) - Conversational message content
+//   - timestamp: timestamp (required, immutable) - Message creation timestamp
+//   - turnNumber: int (required, range 0 to 1000, immutable) - Conversation turn index
+//   - messageId / id: string (optional, if present must match messageId, immutable) - Message ID reference
+//   - sessionId: string (optional, if present must match sessionId, immutable) - Parent session reference
+//   - createdAt: timestamp (optional, immutable) - Timestamp alias
+//
+// Collection: /users/{userId}/sessions/{sessionId}/evaluation/{evalId} (and /evaluations/{evalId})
+// Document ID: Unique evaluation identifier
+// Fields:
+//   - accuracy: number (required, range 0.0 to 100.0) - Factual accuracy score (40% rubric weight)
+//   - completeness: number (required, range 0.0 to 100.0) - Topic checklist coverage score (25% rubric weight)
+//   - clarity: number (required, range 0.0 to 100.0) - Explanation structure and clarity score (20% rubric weight)
+//   - reasoning: number (required, range 0.0 to 100.0) - Causal reasoning and mechanisms score (15% rubric weight)
+//   - feedback: string (required, 0-5000 chars) - Comprehensive qualitative feedback
+//   - strengths: list (required, max 30 items) - List of explanation strengths
+//   - improvements: list (required, max 30 items) - Recommended areas for improvement
+//   - overallScore: number (optional, range 0.0 to 100.0) - Overall weighted score
+//   - createdAt: timestamp (optional, immutable) - Report generation timestamp
+//   - evalId / id: string (optional, if present must match evalId, immutable) - Evaluation ID reference
+//   - sessionId: string (optional, if present must match sessionId, immutable) - Parent session ID reference
+//   - misconceptions: list (optional, max 30 items) - List of detected misconceptions
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------
+    // Default Deny Rule
+    // -----------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===========================================================
+    // Helper Functions
+    // ===========================================================
+
+    // Verify whether the caller is authenticated via Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Verify whether caller's auth UID matches the document owner userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Verify valid email syntax and RFC size bounds (max 254 chars)
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() >= 3 &&
+        email.size() <= 254 &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-zA-Z]{2,}$');
+    }
+
+    // Verify numeric type (int or float)
+    function isNumeric(val) {
+      return val is int || val is float;
+    }
+
+    // Verify score bounded within 0.0 and 100.0
+    function isValidScore(val) {
+      return isNumeric(val) && val >= 0 && val <= 100;
+    }
+
+    // Verify required fields exist on the payload
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    // Verify payload does not contain extraneous or unexpected fields
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    // Verify list type and bound list length to prevent DoS attacks
+    function isValidList(val, maxSize) {
+      return val is list && val.size() <= maxSize;
+    }
+
+    // ===========================================================
+    // Domain Validators
+    // ===========================================================
+
+    // Validator for /users/{userId} profile document
+    function isValidUser(data, userId) {
+      return hasRequiredFields(data, ['email', 'displayName', 'createdAt', 'lastActive']) &&
+        hasOnlyAllowedFields(data, ['email', 'displayName', 'createdAt', 'lastActive', 'userId', 'uid', 'id']) &&
+        isValidEmail(data.email) &&
+        data.displayName is string &&
+        data.displayName.size() >= 1 &&
+        data.displayName.size() <= 100 &&
+        data.createdAt is timestamp &&
+        data.lastActive is timestamp &&
+        (!('userId' in data) || data.userId == userId) &&
+        (!('uid' in data) || data.uid == userId) &&
+        (!('id' in data) || data.id == userId);
+    }
+
+    // Immutability check for /users/{userId} on update
+    function isImmutableUserFieldsUnchanged() {
+      return request.resource.data.createdAt == resource.data.createdAt &&
+        (!('userId' in resource.data) || !('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId) &&
+        (!('uid' in resource.data) || !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid) &&
+        (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id);
+    }
+
+    // Validator for /users/{userId}/sessions/{sessionId} document
+    function isValidSession(data, sessionId) {
+      return hasRequiredFields(data, ['topic', 'persona', 'createdAt', 'overallScore', 'turnCount']) &&
+        hasOnlyAllowedFields(data, ['topic', 'persona', 'createdAt', 'overallScore', 'turnCount', 'sessionId', 'id', 'status']) &&
+        data.topic is string &&
+        data.topic.size() >= 1 &&
+        data.topic.size() <= 200 &&
+        data.persona is string &&
+        data.persona.size() >= 1 &&
+        data.persona.size() <= 60 &&
+        data.createdAt is timestamp &&
+        isValidScore(data.overallScore) &&
+        data.turnCount is int &&
+        data.turnCount >= 0 &&
+        data.turnCount <= 1000 &&
+        (!('sessionId' in data) || data.sessionId == sessionId) &&
+        (!('id' in data) || data.id == sessionId) &&
+        (!('status' in data) || (data.status is string && data.status in ['IN_PROGRESS', 'COMPLETED', 'in_progress', 'completed']));
+    }
+
+    // Immutability check for sessions on update
+    function isImmutableSessionFieldsUnchanged() {
+      return request.resource.data.createdAt == resource.data.createdAt &&
+        (!('sessionId' in resource.data) || !('sessionId' in request.resource.data) || request.resource.data.sessionId == resource.data.sessionId) &&
+        (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id);
+    }
+
+    // Validator for /users/{userId}/sessions/{sessionId}/messages/{messageId} document
+    function isValidMessage(data, messageId, sessionId) {
+      return hasRequiredFields(data, ['sender', 'messageText', 'timestamp', 'turnNumber']) &&
+        hasOnlyAllowedFields(data, ['sender', 'messageText', 'timestamp', 'turnNumber', 'messageId', 'id', 'sessionId', 'createdAt']) &&
+        data.sender is string &&
+        data.sender in ['learner', 'student', 'LEARNER', 'STUDENT'] &&
+        data.messageText is string &&
+        data.messageText.size() >= 1 &&
+        data.messageText.size() <= 10000 &&
+        data.timestamp is timestamp &&
+        data.turnNumber is int &&
+        data.turnNumber >= 0 &&
+        data.turnNumber <= 1000 &&
+        (!('messageId' in data) || data.messageId == messageId) &&
+        (!('id' in data) || data.id == messageId) &&
+        (!('sessionId' in data) || data.sessionId == sessionId) &&
+        (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    // Immutability check for messages on update (preserves transcript integrity)
+    function isImmutableMessageFieldsUnchanged() {
+      return request.resource.data.timestamp == resource.data.timestamp &&
+        request.resource.data.turnNumber == resource.data.turnNumber &&
+        request.resource.data.sender == resource.data.sender &&
+        (!('sessionId' in resource.data) || !('sessionId' in request.resource.data) || request.resource.data.sessionId == resource.data.sessionId) &&
+        (!('messageId' in resource.data) || !('messageId' in request.resource.data) || request.resource.data.messageId == resource.data.messageId);
+    }
+
+    // Validator for evaluation document
+    function isValidEvaluation(data, evalId, sessionId) {
+      return hasRequiredFields(data, ['accuracy', 'completeness', 'clarity', 'reasoning', 'feedback', 'strengths', 'improvements']) &&
+        hasOnlyAllowedFields(data, ['accuracy', 'completeness', 'clarity', 'reasoning', 'feedback', 'strengths', 'improvements', 'overallScore', 'createdAt', 'evalId', 'id', 'sessionId', 'misconceptions']) &&
+        isValidScore(data.accuracy) &&
+        isValidScore(data.completeness) &&
+        isValidScore(data.clarity) &&
+        isValidScore(data.reasoning) &&
+        data.feedback is string &&
+        data.feedback.size() <= 5000 &&
+        isValidList(data.strengths, 30) &&
+        isValidList(data.improvements, 30) &&
+        (!('overallScore' in data) || isValidScore(data.overallScore)) &&
+        (!('createdAt' in data) || data.createdAt is timestamp) &&
+        (!('evalId' in data) || data.evalId == evalId) &&
+        (!('id' in data) || data.id == evalId) &&
+        (!('sessionId' in data) || data.sessionId == sessionId) &&
+        (!('misconceptions' in data) || isValidList(data.misconceptions, 30));
+    }
+
+    // Immutability check for evaluation on update
+    function isImmutableEvaluationFieldsUnchanged() {
+      return (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+        (!('sessionId' in resource.data) || !('sessionId' in request.resource.data) || request.resource.data.sessionId == resource.data.sessionId) &&
+        (!('evalId' in resource.data) || !('evalId' in request.resource.data) || request.resource.data.evalId == resource.data.evalId);
+    }
+
+    // ===========================================================
+    // Collection Rules
+    // ===========================================================
+
+    // User profile documents
+    match /users/{userId} {
+      allow read, delete: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data, userId);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data, userId) && isImmutableUserFieldsUnchanged();
+
+      // Learning sessions subcollection
+      match /sessions/{sessionId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSession(request.resource.data, sessionId);
+        allow update: if isOwner(userId) && isValidSession(request.resource.data, sessionId) && isImmutableSessionFieldsUnchanged();
+
+        // Chat messages subcollection
+        match /messages/{messageId} {
+          allow read, delete: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidMessage(request.resource.data, messageId, sessionId);
+          allow update: if isOwner(userId) && isValidMessage(request.resource.data, messageId, sessionId) && isImmutableMessageFieldsUnchanged();
+        }
+
+        // Evaluation reports subcollection (supports both 'evaluation' and 'evaluations')
+        match /evaluation/{evalId} {
+          allow read, delete: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidEvaluation(request.resource.data, evalId, sessionId);
+          allow update: if isOwner(userId) && isValidEvaluation(request.resource.data, evalId, sessionId) && isImmutableEvaluationFieldsUnchanged();
+        }
+
+        match /evaluations/{evalId} {
+          allow read, delete: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidEvaluation(request.resource.data, evalId, sessionId);
+          allow update: if isOwner(userId) && isValidEvaluation(request.resource.data, evalId, sessionId) && isImmutableEvaluationFieldsUnchanged();
+        }
+      }
+    }
+  }
+}

@@ -15,6 +15,7 @@ import com.edumate.app.adapter.HistoryAdapter;
 import com.edumate.app.databinding.ActivityMainBinding;
 import com.edumate.app.model.Session;
 import com.edumate.app.viewmodel.HomeViewModel;
+import com.google.firebase.auth.FirebaseAuth;
 
 public class MainActivity extends AppCompatActivity {
     private ActivityMainBinding binding;
@@ -24,6 +25,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Auth guard: redirect to LoginActivity if no Firebase user is signed in
+        try {
+            if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+                startActivity(new Intent(this, LoginActivity.class));
+                finish();
+                return;
+            }
+        } catch (Throwable ignored) {}
+
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
@@ -37,6 +48,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Auth guard: redirect to login if session was revoked or user signed out
+        try {
+            if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+                startActivity(new Intent(this, LoginActivity.class));
+                finish();
+                return;
+            }
+        } catch (Throwable ignored) {}
         viewModel.loadHomeData();
     }
 
