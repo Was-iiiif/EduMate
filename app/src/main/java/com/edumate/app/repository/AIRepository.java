@@ -47,10 +47,7 @@ public class AIRepository {
     public static final String KEY_GEMINI_API_KEY = "gemini_api_key";
 
     private static final String[] GEMINI_MODELS = new String[] {
-            "gemini-1.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-1.5-pro"
+            "gemini-3.8-flash"
     };
 
     private static boolean shouldRetryWithNextModel(int respCode) {
@@ -202,7 +199,7 @@ public class AIRepository {
                         return preferred;
                     }
                 }
-                return "gemini-1.5-flash";
+                return GEMINI_MODELS[0];
             } else {
                 String errorBody = readStream(conn.getErrorStream());
                 String formatted = formatApiError(respCode, errorBody);
@@ -238,42 +235,56 @@ public class AIRepository {
 
         for (String modelName : GEMINI_MODELS) {
             String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
-            try {
-                URL url = new URL(endpoint);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                conn.setRequestProperty("x-goog-api-key", apiKey);
-                applyAndroidCertHeaders(conn);
-                conn.setConnectTimeout(20000);
-                conn.setReadTimeout(25000);
-                conn.setDoOutput(true);
+            int maxRetries = 3;
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    URL url = new URL(endpoint);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    conn.setRequestProperty("x-goog-api-key", apiKey);
+                    applyAndroidCertHeaders(conn);
+                    conn.setConnectTimeout(20000);
+                    conn.setReadTimeout(25000);
+                    conn.setDoOutput(true);
 
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(body);
-                }
-
-                int respCode = conn.getResponseCode();
-                if (respCode == 200) {
-                    return modelName;
-                } else {
-                    String errorBody = readStream(conn.getErrorStream());
-                    String formatted = formatApiError(respCode, errorBody);
-                    Log.e(TAG, "Ping failed on " + modelName + ": " + formatted);
-                    lastException = new IOException(formatted);
-                    if (!shouldRetryWithNextModel(respCode)) {
-                        throw lastException;
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(body);
                     }
-                }
-            } catch (Exception e) {
-                lastException = e;
-                if (!shouldRetryWithNextModel(e)) {
-                    throw e;
+
+                    int respCode = conn.getResponseCode();
+                    if (respCode == 200) {
+                        return modelName;
+                    } else if (respCode == 503 || respCode == 429) {
+                        String errorBody = readStream(conn.getErrorStream());
+                        String formatted = formatApiError(respCode, errorBody);
+                        Log.w(TAG, "Ping on " + modelName + " returned HTTP " + respCode + " (attempt " + attempt + "/" + maxRetries + "): " + formatted);
+                        lastException = new IOException(formatted);
+                        if (attempt < maxRetries) {
+                            try {
+                                Thread.sleep(1500L * attempt);
+                            } catch (InterruptedException ignored) {}
+                            continue;
+                        }
+                    } else {
+                        String errorBody = readStream(conn.getErrorStream());
+                        String formatted = formatApiError(respCode, errorBody);
+                        Log.e(TAG, "Ping failed on " + modelName + ": " + formatted);
+                        lastException = new IOException(formatted);
+                        if (!shouldRetryWithNextModel(respCode)) {
+                            throw lastException;
+                        }
+                    }
+                } catch (Exception e) {
+                    lastException = e;
+                    if (!shouldRetryWithNextModel(e)) {
+                        throw e;
+                    }
                 }
             }
         }
         if (lastException != null) throw lastException;
-        return "gemini-1.5-flash";
+        return GEMINI_MODELS[0];
     }
 
     // --- TOPIC CHECKLIST ---
@@ -834,55 +845,69 @@ public class AIRepository {
 
         for (String modelName : GEMINI_MODELS) {
             String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + cleanKey;
-            try {
-                URL url = new URL(endpoint);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                conn.setRequestProperty("x-goog-api-key", cleanKey);
-                applyAndroidCertHeaders(conn);
-                conn.setConnectTimeout(20000);
-                conn.setReadTimeout(25000);
-                conn.setDoOutput(true);
+            int maxRetries = 3;
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    URL url = new URL(endpoint);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    conn.setRequestProperty("x-goog-api-key", cleanKey);
+                    applyAndroidCertHeaders(conn);
+                    conn.setConnectTimeout(20000);
+                    conn.setReadTimeout(25000);
+                    conn.setDoOutput(true);
 
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(body);
-                }
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(body);
+                    }
 
-                int respCode = conn.getResponseCode();
-                if (respCode == 200) {
-                    try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                        StringBuilder sb = new StringBuilder();
-                        String line;
-                        while ((line = br.readLine()) != null) sb.append(line);
-                        JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
-                        if (res.has("candidates") && res.getAsJsonArray("candidates").size() > 0) {
-                            JsonObject cand = res.getAsJsonArray("candidates").get(0).getAsJsonObject();
-                            JsonObject content = cand.getAsJsonObject("content");
-                            if (content != null && content.has("parts")) {
-                                JsonArray parts = content.getAsJsonArray("parts");
-                                if (parts.size() > 0) {
-                                    String text = parts.get(0).getAsJsonObject().get("text").getAsString();
-                                    if (text != null && !text.trim().isEmpty()) {
-                                        return text.trim();
+                    int respCode = conn.getResponseCode();
+                    if (respCode == 200) {
+                        try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                            StringBuilder sb = new StringBuilder();
+                            String line;
+                            while ((line = br.readLine()) != null) sb.append(line);
+                            JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
+                            if (res.has("candidates") && res.getAsJsonArray("candidates").size() > 0) {
+                                JsonObject cand = res.getAsJsonArray("candidates").get(0).getAsJsonObject();
+                                JsonObject content = cand.getAsJsonObject("content");
+                                if (content != null && content.has("parts")) {
+                                    JsonArray parts = content.getAsJsonArray("parts");
+                                    if (parts.size() > 0) {
+                                        String text = parts.get(0).getAsJsonObject().get("text").getAsString();
+                                        if (text != null && !text.trim().isEmpty()) {
+                                            return text.trim();
+                                        }
                                     }
                                 }
                             }
                         }
+                    } else if (respCode == 503 || respCode == 429) {
+                        String errorBody = readStream(conn.getErrorStream());
+                        String formatted = formatApiError(respCode, errorBody);
+                        Log.w(TAG, modelName + " returned HTTP " + respCode + " (attempt " + attempt + "/" + maxRetries + "): " + formatted);
+                        lastException = new IOException(formatted);
+                        if (attempt < maxRetries) {
+                            try {
+                                Thread.sleep(1500L * attempt);
+                            } catch (InterruptedException ignored) {}
+                            continue;
+                        }
+                    } else {
+                        String errorBody = readStream(conn.getErrorStream());
+                        String formatted = formatApiError(respCode, errorBody);
+                        Log.e(TAG, "Gemini student reply HTTP " + respCode + " on " + modelName + ": " + formatted);
+                        lastException = new IOException(formatted);
+                        if (!shouldRetryWithNextModel(respCode)) {
+                            throw lastException;
+                        }
                     }
-                } else {
-                    String errorBody = readStream(conn.getErrorStream());
-                    String formatted = formatApiError(respCode, errorBody);
-                    Log.e(TAG, "Gemini student reply HTTP " + respCode + " on " + modelName + ": " + formatted);
-                    lastException = new IOException(formatted);
-                    if (!shouldRetryWithNextModel(respCode)) {
-                        throw lastException;
+                } catch (Exception e) {
+                    lastException = e;
+                    if (!shouldRetryWithNextModel(e)) {
+                        throw e;
                     }
-                }
-            } catch (Exception e) {
-                lastException = e;
-                if (!shouldRetryWithNextModel(e)) {
-                    throw e;
                 }
             }
         }
@@ -942,50 +967,64 @@ public class AIRepository {
 
         for (String modelName : GEMINI_MODELS) {
             String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + cleanKey;
-            try {
-                URL url = new URL(endpoint);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                conn.setRequestProperty("x-goog-api-key", cleanKey);
-                applyAndroidCertHeaders(conn);
-                conn.setConnectTimeout(20000);
-                conn.setReadTimeout(30000);
-                conn.setDoOutput(true);
+            int maxRetries = 3;
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    URL url = new URL(endpoint);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    conn.setRequestProperty("x-goog-api-key", cleanKey);
+                    applyAndroidCertHeaders(conn);
+                    conn.setConnectTimeout(20000);
+                    conn.setReadTimeout(30000);
+                    conn.setDoOutput(true);
 
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(body);
-                }
-
-                int respCode = conn.getResponseCode();
-                if (respCode == 200) {
-                    try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                        StringBuilder sb = new StringBuilder();
-                        String line;
-                        while ((line = br.readLine()) != null) sb.append(line);
-                        JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
-                        String jsonText = res.getAsJsonArray("candidates")
-                                .get(0).getAsJsonObject()
-                                .getAsJsonObject("content")
-                                .getAsJsonArray("parts")
-                                .get(0).getAsJsonObject()
-                                .get("text").getAsString();
-
-                        return parseAndValidateEvaluationJson(jsonText);
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(body);
                     }
-                } else {
-                    String errorBody = readStream(conn.getErrorStream());
-                    String formatted = formatApiError(respCode, errorBody);
-                    Log.e(TAG, "Gemini evaluation HTTP " + respCode + " on " + modelName + ": " + formatted);
-                    lastException = new IOException(formatted);
-                    if (!shouldRetryWithNextModel(respCode)) {
-                        throw lastException;
+
+                    int respCode = conn.getResponseCode();
+                    if (respCode == 200) {
+                        try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                            StringBuilder sb = new StringBuilder();
+                            String line;
+                            while ((line = br.readLine()) != null) sb.append(line);
+                            JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
+                            String jsonText = res.getAsJsonArray("candidates")
+                                    .get(0).getAsJsonObject()
+                                    .getAsJsonObject("content")
+                                    .getAsJsonArray("parts")
+                                    .get(0).getAsJsonObject()
+                                    .get("text").getAsString();
+
+                            return parseAndValidateEvaluationJson(jsonText);
+                        }
+                    } else if (respCode == 503 || respCode == 429) {
+                        String errorBody = readStream(conn.getErrorStream());
+                        String formatted = formatApiError(respCode, errorBody);
+                        Log.w(TAG, "Evaluation on " + modelName + " returned HTTP " + respCode + " (attempt " + attempt + "/" + maxRetries + "): " + formatted);
+                        lastException = new IOException(formatted);
+                        if (attempt < maxRetries) {
+                            try {
+                                Thread.sleep(1500L * attempt);
+                            } catch (InterruptedException ignored) {}
+                            continue;
+                        }
+                    } else {
+                        String errorBody = readStream(conn.getErrorStream());
+                        String formatted = formatApiError(respCode, errorBody);
+                        Log.e(TAG, "Gemini evaluation HTTP " + respCode + " on " + modelName + ": " + formatted);
+                        lastException = new IOException(formatted);
+                        if (!shouldRetryWithNextModel(respCode)) {
+                            throw lastException;
+                        }
                     }
-                }
-            } catch (Exception e) {
-                lastException = e;
-                if (!shouldRetryWithNextModel(e)) {
-                    throw e;
+                } catch (Exception e) {
+                    lastException = e;
+                    if (!shouldRetryWithNextModel(e)) {
+                        throw e;
+                    }
                 }
             }
         }
@@ -1095,7 +1134,7 @@ public class AIRepository {
         } else if (respCode == 429) {
             return "Gemini 429: Rate limit exceeded. Please wait a moment.";
         } else if (respCode == 503) {
-            return "Gemini 503: Model is temporarily overloaded (" + (detail.isEmpty() ? "Service Unavailable" : detail) + "). Retrying with fallback model or offline student.";
+            return "Gemini 503: The model 'gemini-3.8-flash' is temporarily overloaded (" + (detail.isEmpty() ? "Service Unavailable" : detail) + "). Retrying or using offline student.";
         }
         return "Gemini HTTP " + respCode + (!detail.isEmpty() ? ": " + detail : "");
     }
