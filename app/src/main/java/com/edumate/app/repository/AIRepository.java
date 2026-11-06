@@ -47,10 +47,10 @@ public class AIRepository {
     public static final String KEY_GEMINI_API_KEY = "gemini_api_key";
 
     private static final String[] GEMINI_MODELS = new String[] {
-            "gemini-3.8-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b"
+            "gemini-3.8-flash",        // primary (newest, but most in demand)
+            "gemini-3.7-flash",        // older generation, usually less loaded
+            "gemini-3.5-flash-lite",   // lite = most spare capacity
+            "gemini-2.5-flash"         // stable fallback, long-lived
     };
 
     private static boolean shouldRetryWithNextModel(int respCode) {
