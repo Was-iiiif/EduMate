@@ -46,9 +46,24 @@ public class AIRepository {
     public static final String PREFS_NAME = "edumate_ai_prefs";
     public static final String KEY_GEMINI_API_KEY = "gemini_api_key";
 
-    private static final String[] GEMINI_MODELS = {
-            "gemini-3.8-flash"
+    private static final String[] GEMINI_MODELS = new String[] {
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash-8b",
+            "gemini-1.5-pro"
     };
+
+    private static boolean shouldRetryWithNextModel(int respCode) {
+        return respCode == 404 || respCode == 503 || respCode == 429 || respCode == 500 || respCode == 502 || respCode == 504;
+    }
+
+    private static boolean shouldRetryWithNextModel(Exception e) {
+        if (e == null) return false;
+        if (e instanceof java.net.SocketTimeoutException) return true;
+        String msg = e.getMessage();
+        if (msg == null) return false;
+        return msg.contains("404") || msg.contains("503") || msg.contains("429") || msg.contains("500") || msg.contains("502") || msg.contains("504") || msg.contains("timeout") || msg.contains("overloaded");
+    }
 
     public interface StudentReplyCallback {
         void onSuccess(String studentReply);
@@ -246,13 +261,13 @@ public class AIRepository {
                     String formatted = formatApiError(respCode, errorBody);
                     Log.e(TAG, "Ping failed on " + modelName + ": " + formatted);
                     lastException = new IOException(formatted);
-                    if (respCode != 404) {
+                    if (!shouldRetryWithNextModel(respCode)) {
                         throw lastException;
                     }
                 }
             } catch (Exception e) {
                 lastException = e;
-                if (e.getMessage() != null && !e.getMessage().contains("404")) {
+                if (!shouldRetryWithNextModel(e)) {
                     throw e;
                 }
             }
@@ -860,13 +875,13 @@ public class AIRepository {
                     String formatted = formatApiError(respCode, errorBody);
                     Log.e(TAG, "Gemini student reply HTTP " + respCode + " on " + modelName + ": " + formatted);
                     lastException = new IOException(formatted);
-                    if (respCode != 404) {
+                    if (!shouldRetryWithNextModel(respCode)) {
                         throw lastException;
                     }
                 }
             } catch (Exception e) {
                 lastException = e;
-                if (e.getMessage() != null && !e.getMessage().contains("404")) {
+                if (!shouldRetryWithNextModel(e)) {
                     throw e;
                 }
             }
@@ -963,13 +978,13 @@ public class AIRepository {
                     String formatted = formatApiError(respCode, errorBody);
                     Log.e(TAG, "Gemini evaluation HTTP " + respCode + " on " + modelName + ": " + formatted);
                     lastException = new IOException(formatted);
-                    if (respCode != 404) {
+                    if (!shouldRetryWithNextModel(respCode)) {
                         throw lastException;
                     }
                 }
             } catch (Exception e) {
                 lastException = e;
-                if (e.getMessage() != null && !e.getMessage().contains("404")) {
+                if (!shouldRetryWithNextModel(e)) {
                     throw e;
                 }
             }
@@ -1079,6 +1094,8 @@ public class AIRepository {
             return "Gemini 404: Model not available (" + detail + ")";
         } else if (respCode == 429) {
             return "Gemini 429: Rate limit exceeded. Please wait a moment.";
+        } else if (respCode == 503) {
+            return "Gemini 503: Model is temporarily overloaded (" + (detail.isEmpty() ? "Service Unavailable" : detail) + "). Retrying with fallback model or offline student.";
         }
         return "Gemini HTTP " + respCode + (!detail.isEmpty() ? ": " + detail : "");
     }

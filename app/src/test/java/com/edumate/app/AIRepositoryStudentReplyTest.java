@@ -119,6 +119,14 @@ public class AIRepositoryStudentReplyTest {
     }
 
     @Test
+    public void testFormatApiError_decodes503Correctly() {
+        String overloadedJson = "{\"error\":{\"code\":503,\"message\":\"The model is overloaded. Please try again later.\",\"status\":\"UNAVAILABLE\"}}";
+        String formatted = AIRepository.formatApiError(503, overloadedJson);
+        assertTrue(formatted.contains("503"));
+        assertTrue(formatted.contains("overloaded"));
+    }
+
+    @Test
     public void testFormatNetworkException_handlesTimeoutAndOffline() {
         String timeoutMsg = AIRepository.formatNetworkException(new java.net.SocketTimeoutException("timeout"));
         assertTrue(timeoutMsg.contains("Connection Timed Out"));
