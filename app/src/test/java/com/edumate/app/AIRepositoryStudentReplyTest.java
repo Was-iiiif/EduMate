@@ -1,5 +1,6 @@
 package com.edumate.app;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -95,5 +96,25 @@ public class AIRepositoryStudentReplyTest {
         assertNotNull(reply);
         assertTrue(reply.contains("'yes'") || reply.contains("Just 'yes'"));
         assertTrue(reply.contains("explain") || reply.contains("convince") || reply.contains("works"));
+    }
+
+    @Test
+    public void testSanitizeApiKey_stripsQuotesAndWhitespace() {
+        assertEquals("AIzaSyTest123", AIRepository.sanitizeApiKey("  \"AIzaSyTest123\"  "));
+        assertEquals("AIzaSyTest123", AIRepository.sanitizeApiKey("'AIzaSyTest123'"));
+        assertEquals("AIzaSyTest123", AIRepository.sanitizeApiKey("AIzaSy\nTest123\r "));
+        assertEquals("", AIRepository.sanitizeApiKey(null));
+        assertEquals("", AIRepository.sanitizeApiKey("\"\""));
+    }
+
+    @Test
+    public void testFormatApiError_decodes403Correctly() {
+        String invalidKeyJson = "{\"error\":{\"code\":403,\"message\":\"API key not valid. Please pass a valid API key.\",\"status\":\"PERMISSION_DENIED\"}}";
+        String formatted = AIRepository.formatApiError(403, invalidKeyJson);
+        assertTrue(formatted.contains("Invalid API Key"));
+
+        String blockedJson = "{\"error\":{\"code\":403,\"message\":\"Requests from this Android client application <empty> are blocked.\",\"status\":\"PERMISSION_DENIED\"}}";
+        String formattedBlocked = AIRepository.formatApiError(403, blockedJson);
+        assertTrue(formattedBlocked.contains("restriction"));
     }
 }

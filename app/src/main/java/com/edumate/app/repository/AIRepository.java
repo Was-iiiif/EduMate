@@ -2,6 +2,9 @@ package com.edumate.app.repository;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -18,11 +21,13 @@ import com.google.gson.JsonParser;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -41,6 +46,7 @@ public class AIRepository {
 
     private static final String[] GEMINI_MODELS = new String[] {
             "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
             "gemini-2.0-flash",
             "gemini-2.5-flash"
     };
@@ -58,6 +64,11 @@ public class AIRepository {
         default void onSuccessWithStatus(Evaluation evaluation, boolean isFromGemini, String geminiError) {
             onSuccess(evaluation);
         }
+        void onError(String errorMessage);
+    }
+
+    public interface TestApiKeyCallback {
+        void onSuccess(String modelUsed);
         void onError(String errorMessage);
     }
 
@@ -95,22 +106,25 @@ public class AIRepository {
 
     public void setApiKey(String apiKey) {
         if (context == null) return;
+        String sanitized = sanitizeApiKey(apiKey);
         SharedPreferences sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        sp.edit().putString(KEY_GEMINI_API_KEY, apiKey != null ? apiKey.trim() : "").apply();
+        sp.edit().putString(KEY_GEMINI_API_KEY, sanitized).apply();
     }
 
     public String getApiKey() {
         if (context != null) {
             SharedPreferences sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             String saved = sp.getString(KEY_GEMINI_API_KEY, "");
-            if (saved != null && !saved.trim().isEmpty()) {
-                return saved.trim();
+            String sanitized = sanitizeApiKey(saved);
+            if (!sanitized.isEmpty()) {
+                return sanitized;
             }
         }
         try {
             String buildConfigKey = com.edumate.app.BuildConfig.GEMINI_API_KEY;
-            if (buildConfigKey != null && !buildConfigKey.trim().isEmpty()) {
-                return buildConfigKey.trim();
+            String sanitized = sanitizeApiKey(buildConfigKey);
+            if (!sanitized.isEmpty()) {
+                return sanitized;
             }
         } catch (Throwable ignored) {}
         return "";
@@ -118,6 +132,83 @@ public class AIRepository {
 
     public boolean hasApiKey() {
         return !getApiKey().isEmpty();
+    }
+
+    public void testApiKey(String apiKey, TestApiKeyCallback callback) {
+        executors.networkIO().execute(() -> {
+            String cleanKey = sanitizeApiKey(apiKey);
+            if (cleanKey.isEmpty()) {
+                postToMain(() -> callback.onError("API Key is empty. Please enter a valid Gemini API key."));
+                return;
+            }
+            try {
+                String modelUsed = callGeminiPing(cleanKey);
+                postToMain(() -> callback.onSuccess(modelUsed));
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "Unknown error connecting to Gemini";
+                postToMain(() -> callback.onError(msg));
+            }
+        });
+    }
+
+    private String callGeminiPing(String apiKey) throws Exception {
+        JsonObject root = new JsonObject();
+        JsonArray contents = new JsonArray();
+        JsonObject turn = new JsonObject();
+        turn.addProperty("role", "user");
+        JsonArray parts = new JsonArray();
+        JsonObject p = new JsonObject();
+        p.addProperty("text", "Hi");
+        parts.add(p);
+        turn.add("parts", parts);
+        contents.add(turn);
+        root.add("contents", contents);
+
+        JsonObject genConfig = new JsonObject();
+        genConfig.addProperty("maxOutputTokens", 5);
+        root.add("generationConfig", genConfig);
+
+        byte[] body = root.toString().getBytes(StandardCharsets.UTF_8);
+        Exception lastException = null;
+
+        for (String modelName : GEMINI_MODELS) {
+            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
+            try {
+                URL url = new URL(endpoint);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                conn.setRequestProperty("x-goog-api-key", apiKey);
+                applyAndroidCertHeaders(conn);
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(12000);
+                conn.setDoOutput(true);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body);
+                }
+
+                int respCode = conn.getResponseCode();
+                if (respCode == 200) {
+                    return modelName;
+                } else {
+                    String errorBody = readStream(conn.getErrorStream());
+                    String formatted = formatApiError(respCode, errorBody);
+                    Log.e(TAG, "Ping failed on " + modelName + ": " + formatted);
+                    lastException = new IOException(formatted);
+                    if (respCode != 404) {
+                        throw lastException;
+                    }
+                }
+            } catch (Exception e) {
+                lastException = e;
+                if (e.getMessage() != null && !e.getMessage().contains("404")) {
+                    throw e;
+                }
+            }
+        }
+        if (lastException != null) throw lastException;
+        return "gemini-1.5-flash";
     }
 
     // --- TOPIC CHECKLIST ---
@@ -674,14 +765,17 @@ public class AIRepository {
 
         byte[] body = root.toString().getBytes(StandardCharsets.UTF_8);
         Exception lastException = null;
+        String cleanKey = sanitizeApiKey(apiKey);
 
         for (String modelName : GEMINI_MODELS) {
-            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey.trim();
+            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + cleanKey;
             try {
                 URL url = new URL(endpoint);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                conn.setRequestProperty("x-goog-api-key", cleanKey);
+                applyAndroidCertHeaders(conn);
                 conn.setConnectTimeout(12000);
                 conn.setReadTimeout(18000);
                 conn.setDoOutput(true);
@@ -712,22 +806,17 @@ public class AIRepository {
                         }
                     }
                 } else {
-                    String errorBody = "";
-                    try (BufferedReader errBr = new BufferedReader(new InputStreamReader(conn.getErrorStream(), StandardCharsets.UTF_8))) {
-                        StringBuilder errSb = new StringBuilder();
-                        String line;
-                        while ((line = errBr.readLine()) != null) errSb.append(line);
-                        errorBody = errSb.toString();
-                    } catch (Exception ignored) {}
-                    Log.e(TAG, "Gemini API HTTP " + respCode + " on " + modelName + ": " + errorBody);
-                    lastException = new IOException("HTTP " + respCode + ": " + errorBody);
+                    String errorBody = readStream(conn.getErrorStream());
+                    String formatted = formatApiError(respCode, errorBody);
+                    Log.e(TAG, "Gemini student reply HTTP " + respCode + " on " + modelName + ": " + formatted);
+                    lastException = new IOException(formatted);
                     if (respCode != 404) {
                         throw lastException;
                     }
                 }
             } catch (Exception e) {
                 lastException = e;
-                if (e.getMessage() != null && !e.getMessage().contains("HTTP 404")) {
+                if (e.getMessage() != null && !e.getMessage().contains("404")) {
                     throw e;
                 }
             }
@@ -784,14 +873,17 @@ public class AIRepository {
 
         byte[] body = root.toString().getBytes(StandardCharsets.UTF_8);
         Exception lastException = null;
+        String cleanKey = sanitizeApiKey(apiKey);
 
         for (String modelName : GEMINI_MODELS) {
-            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey.trim();
+            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + cleanKey;
             try {
                 URL url = new URL(endpoint);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                conn.setRequestProperty("x-goog-api-key", cleanKey);
+                applyAndroidCertHeaders(conn);
                 conn.setConnectTimeout(14000);
                 conn.setReadTimeout(20000);
                 conn.setDoOutput(true);
@@ -817,22 +909,17 @@ public class AIRepository {
                         return parseAndValidateEvaluationJson(jsonText);
                     }
                 } else {
-                    String errorBody = "";
-                    try (BufferedReader errBr = new BufferedReader(new InputStreamReader(conn.getErrorStream(), StandardCharsets.UTF_8))) {
-                        StringBuilder errSb = new StringBuilder();
-                        String line;
-                        while ((line = errBr.readLine()) != null) errSb.append(line);
-                        errorBody = errSb.toString();
-                    } catch (Exception ignored) {}
-                    Log.e(TAG, "Gemini evaluation HTTP " + respCode + " on " + modelName + ": " + errorBody);
-                    lastException = new IOException("HTTP " + respCode + ": " + errorBody);
+                    String errorBody = readStream(conn.getErrorStream());
+                    String formatted = formatApiError(respCode, errorBody);
+                    Log.e(TAG, "Gemini evaluation HTTP " + respCode + " on " + modelName + ": " + formatted);
+                    lastException = new IOException(formatted);
                     if (respCode != 404) {
                         throw lastException;
                     }
                 }
             } catch (Exception e) {
                 lastException = e;
-                if (e.getMessage() != null && !e.getMessage().contains("HTTP 404")) {
+                if (e.getMessage() != null && !e.getMessage().contains("404")) {
                     throw e;
                 }
             }
@@ -842,6 +929,120 @@ public class AIRepository {
             throw lastException;
         }
         return null;
+    }
+
+    private void applyAndroidCertHeaders(HttpURLConnection conn) {
+        if (context != null) {
+            try {
+                conn.setRequestProperty("X-Android-Package", context.getPackageName());
+                String sha1 = getAppCertificateSha1(context);
+                if (sha1 != null && !sha1.isEmpty()) {
+                    conn.setRequestProperty("X-Android-Cert", sha1);
+                }
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    public static String getAppCertificateSha1(Context context) {
+        if (context == null) return "";
+        try {
+            PackageManager pm = context.getPackageManager();
+            String packageName = context.getPackageName();
+            PackageInfo packageInfo;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo = pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES);
+                if (packageInfo.signingInfo != null) {
+                    Signature[] signatures = packageInfo.signingInfo.hasMultipleSigners()
+                            ? packageInfo.signingInfo.getApkContentsSigners()
+                            : packageInfo.signingInfo.getSigningCertificateHistory();
+                    if (signatures != null && signatures.length > 0) {
+                        return calculateSha1(signatures[0]);
+                    }
+                }
+            } else {
+                packageInfo = pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES);
+                if (packageInfo.signatures != null && packageInfo.signatures.length > 0) {
+                    return calculateSha1(packageInfo.signatures[0]);
+                }
+            }
+        } catch (Throwable ignored) {}
+        return "";
+    }
+
+    private static String calculateSha1(Signature sig) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-1");
+            byte[] digest = md.digest(sig.toByteArray());
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static String sanitizeApiKey(String raw) {
+        if (raw == null) return "";
+        String s = raw.trim();
+        while ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'"))) {
+            if (s.length() <= 2) return "";
+            s = s.substring(1, s.length() - 1).trim();
+        }
+        s = s.replaceAll("[\\s\\u00A0\\u200B\\uFEFF]+", "");
+        return s;
+    }
+
+    public static String formatApiError(int respCode, String errorBody) {
+        String detail = "";
+        if (errorBody != null && !errorBody.trim().isEmpty()) {
+            try {
+                JsonObject obj = JsonParser.parseString(errorBody).getAsJsonObject();
+                if (obj.has("error") && obj.get("error").isJsonObject()) {
+                    JsonObject errObj = obj.getAsJsonObject("error");
+                    if (errObj.has("message")) {
+                        detail = errObj.get("message").getAsString();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (respCode == 403) {
+            String lower = detail.toLowerCase(Locale.ROOT);
+            if (lower.contains("api key not valid") || lower.contains("invalid api key")) {
+                return "Gemini 403: Invalid API Key. Please get a valid key from https://aistudio.google.com/app/apikey.";
+            } else if (lower.contains("blocked") || lower.contains("restriction") || lower.contains("client application")) {
+                return "Gemini 403: API key restriction blocking call. In Google Cloud Console -> Credentials, set Application Restrictions to 'None'.";
+            } else if (lower.contains("generative language api") || lower.contains("disabled") || lower.contains("has not been used")) {
+                return "Gemini 403: Generative Language API is disabled. Please enable it in Google Cloud Console.";
+            } else if (lower.contains("unregistered callers")) {
+                return "Gemini 403: Unregistered caller. Verify your API key has no trailing spaces or special characters.";
+            } else if (!detail.isEmpty()) {
+                return "Gemini 403: " + detail;
+            } else {
+                return "Gemini 403: Permission Denied. Check key validity and restrictions at aistudio.google.com.";
+            }
+        } else if (respCode == 400) {
+            return "Gemini 400: Bad Request (" + detail + ")";
+        } else if (respCode == 404) {
+            return "Gemini 404: Model not available (" + detail + ")";
+        } else if (respCode == 429) {
+            return "Gemini 429: Rate limit exceeded. Please wait a moment.";
+        }
+        return "Gemini HTTP " + respCode + (!detail.isEmpty() ? ": " + detail : "");
+    }
+
+    private static String readStream(InputStream is) {
+        if (is == null) return "";
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     public static Evaluation parseAndValidateEvaluationJson(String jsonText) throws IllegalArgumentException {

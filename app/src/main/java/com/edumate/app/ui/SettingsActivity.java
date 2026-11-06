@@ -59,15 +59,35 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         binding.btnSaveApiKey.setOnClickListener(v -> {
-            String key = binding.etApiKey.getText() != null
-                    ? binding.etApiKey.getText().toString().trim()
+            String rawKey = binding.etApiKey.getText() != null
+                    ? binding.etApiKey.getText().toString()
                     : "";
+            String key = AIRepository.sanitizeApiKey(rawKey);
+            binding.etApiKey.setText(key);
             aiRepository.setApiKey(key);
+
             if (key.isEmpty()) {
-                Toast.makeText(this, "API Key cleared. Using adaptive offline AI student.", Toast.LENGTH_SHORT).show();
+                binding.tvApiKeyStatus.setText("API Key cleared. Using adaptive offline AI student.");
+                binding.tvApiKeyStatus.setTextColor(getColor(R.color.text_secondary));
+                Toast.makeText(this, "API Key cleared. Offline AI student active.", Toast.LENGTH_SHORT).show();
             } else {
-                Toast.makeText(this, "Gemini API Key saved! Cloud AI active.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "API Key saved. Testing connection...", Toast.LENGTH_SHORT).show();
+                testKeyInternal(key);
             }
+        });
+
+        binding.btnTestApiKey.setOnClickListener(v -> {
+            String rawKey = binding.etApiKey.getText() != null
+                    ? binding.etApiKey.getText().toString()
+                    : "";
+            String key = AIRepository.sanitizeApiKey(rawKey);
+            binding.etApiKey.setText(key);
+
+            if (key.isEmpty()) {
+                Toast.makeText(this, "Please enter an API key to test.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            testKeyInternal(key);
         });
 
         binding.btnClearData.setOnClickListener(v -> {
@@ -81,6 +101,43 @@ public class SettingsActivity extends AppCompatActivity {
                     })
                     .setNegativeButton(R.string.action_cancel, null)
                     .show();
+        });
+    }
+
+    private void testKeyInternal(String key) {
+        binding.tvApiKeyStatus.setText("Testing connection to Google Gemini API...");
+        binding.tvApiKeyStatus.setTextColor(getColor(R.color.primary));
+        binding.btnTestApiKey.setEnabled(false);
+        binding.btnSaveApiKey.setEnabled(false);
+
+        aiRepository.testApiKey(key, new AIRepository.TestApiKeyCallback() {
+            @Override
+            public void onSuccess(String modelUsed) {
+                binding.btnTestApiKey.setEnabled(true);
+                binding.btnSaveApiKey.setEnabled(true);
+                binding.tvApiKeyStatus.setText("✓ Connection Verified! Active model: " + modelUsed);
+                binding.tvApiKeyStatus.setTextColor(0xFF16A34A);
+                Toast.makeText(SettingsActivity.this, "Gemini Connected! (" + modelUsed + ")", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onError(String errorMessage) {
+                binding.btnTestApiKey.setEnabled(true);
+                binding.btnSaveApiKey.setEnabled(true);
+                binding.tvApiKeyStatus.setText("✗ " + errorMessage);
+                binding.tvApiKeyStatus.setTextColor(0xFFDC2626);
+
+                new AlertDialog.Builder(SettingsActivity.this)
+                        .setTitle("Gemini API Error")
+                        .setMessage(errorMessage + "\n\nTroubleshooting Guide:\n"
+                                + "• Verify your key at: https://aistudio.google.com/app/apikey\n"
+                                + "• In Google Cloud Console -> Credentials -> API Key:\n"
+                                + "  - Set Application Restrictions to 'None'\n"
+                                + "  - Ensure 'Generative Language API' is enabled\n"
+                                + "• If you don't have a key, leave it empty to use EduMate's adaptive offline student!")
+                        .setPositiveButton("OK", null)
+                        .show();
+            }
         });
     }
 }
