@@ -156,6 +156,11 @@ public class SessionActivity extends AppCompatActivity {
             voiceController.stopSpeaking();
         });
 
+        binding.tvAiModeBadge.setOnClickListener(v -> {
+            Intent intent = new Intent(SessionActivity.this, SettingsActivity.class);
+            startActivity(intent);
+        });
+
         binding.btnFinishEarly.setOnClickListener(v -> {
             new AlertDialog.Builder(this)
                     .setTitle(R.string.confirm_finish_title)
@@ -232,6 +237,18 @@ public class SessionActivity extends AppCompatActivity {
                 Toast.makeText(this, error, Toast.LENGTH_LONG).show();
             }
         });
+
+        viewModel.getAiEngineStatus().observe(this, status -> {
+            if (status != null && binding.tvAiModeBadge != null) {
+                binding.tvAiModeBadge.setText(status);
+            }
+        });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        readSettings();
     }
 
     @Override

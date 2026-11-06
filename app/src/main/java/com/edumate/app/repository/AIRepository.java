@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
 import com.edumate.app.model.Evaluation;
 import com.edumate.app.model.Message;
@@ -16,6 +17,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -23,11 +25,11 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Locale;
 
 public class AIRepository {
+    private static final String TAG = "AIRepository";
     private static volatile AIRepository sInstance;
     private final Context context;
     private final AppExecutors executors;
@@ -36,16 +38,26 @@ public class AIRepository {
 
     public static final String PREFS_NAME = "edumate_ai_prefs";
     public static final String KEY_GEMINI_API_KEY = "gemini_api_key";
-    private static final String GEMINI_API_URL_TEMPLATE =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
+
+    private static final String[] GEMINI_MODELS = new String[] {
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.5-flash"
+    };
 
     public interface StudentReplyCallback {
         void onSuccess(String studentReply);
+        default void onSuccessWithStatus(String studentReply, boolean isFromGemini, String geminiError) {
+            onSuccess(studentReply);
+        }
         void onError(String errorMessage);
     }
 
     public interface EvaluationCallback {
         void onSuccess(Evaluation evaluation);
+        default void onSuccessWithStatus(Evaluation evaluation, boolean isFromGemini, String geminiError) {
+            onSuccess(evaluation);
+        }
         void onError(String errorMessage);
     }
 
@@ -88,39 +100,54 @@ public class AIRepository {
     }
 
     public String getApiKey() {
-        if (context == null) return "";
-        SharedPreferences sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        return sp.getString(KEY_GEMINI_API_KEY, "");
+        if (context != null) {
+            SharedPreferences sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String saved = sp.getString(KEY_GEMINI_API_KEY, "");
+            if (saved != null && !saved.trim().isEmpty()) {
+                return saved.trim();
+            }
+        }
+        try {
+            String buildConfigKey = com.edumate.app.BuildConfig.GEMINI_API_KEY;
+            if (buildConfigKey != null && !buildConfigKey.trim().isEmpty()) {
+                return buildConfigKey.trim();
+            }
+        } catch (Throwable ignored) {}
+        return "";
+    }
+
+    public boolean hasApiKey() {
+        return !getApiKey().isEmpty();
     }
 
     // --- TOPIC CHECKLIST ---
 
     public List<String> getTopicChecklist(String topic) {
-        String lower = topic.toLowerCase();
+        String lower = topic != null ? topic.toLowerCase(Locale.ROOT) : "";
         if (lower.contains("photosynthesis")) {
             return Arrays.asList(
-                    "Chloroplasts and chlorophyll pigment",
+                    "Chloroplasts and chlorophyll pigment absorbing sunlight",
                     "Light-dependent reactions and ATP/NADPH synthesis",
                     "Calvin cycle (Light-independent reactions)",
                     "Water splitting and Oxygen release",
                     "Carbon dioxide fixation into Glucose",
-                    "Energy conversion from light to chemical bonds"
+                    "Energy conversion from photon energy to chemical bonds"
             );
         } else if (lower.contains("quicksort") || lower.contains("sort")) {
             return Arrays.asList(
                     "Divide-and-conquer strategy",
                     "Pivot selection methods",
-                    "Partitioning step (Lomuto or Hoare)",
+                    "Partitioning step (Lomuto or Hoare pointer exchange)",
                     "Recursive sub-array sorting",
                     "Average time complexity O(N log N)",
                     "Worst-case O(N^2) scenario and in-place space complexity"
             );
         } else if (lower.contains("newton") || lower.contains("gravity") || lower.contains("motion")) {
             return Arrays.asList(
-                    "First law: Inertia and balanced forces",
+                    "First law: Inertia and balanced external forces",
                     "Second law: F = m * a (force equals mass times acceleration)",
                     "Third law: Action and equal/opposite reaction pairs",
-                    "Distinction between mass and weight",
+                    "Distinction between mass (kg) and weight (Newtons)",
                     "Role of friction or resistance"
             );
         } else if (lower.contains("deadlock") || lower.contains("operating system")) {
@@ -134,20 +161,84 @@ public class AIRepository {
         } else if (lower.contains("dna") || lower.contains("replication")) {
             return Arrays.asList(
                     "Double helix structure and complementary base pairing",
-                    "Helicase unwinding the strands",
+                    "Helicase unwinding the strands at the replication fork",
                     "DNA Polymerase synthesizing 5' to 3'",
                     "Leading vs. Lagging strand with Okazaki fragments",
                     "Semi-conservative replication model"
             );
         } else {
             return Arrays.asList(
-                    "Clear core definition and overall purpose",
-                    "Fundamental mechanism or step-by-step process",
+                    "Core definition and primary objective",
+                    "Fundamental step-by-step mechanism",
                     "Key components and their specific roles",
                     "Cause-and-effect relationships / reasoning",
                     "Practical example or real-world application",
-                    "Common edge cases, constraints, or caveats"
+                    "Common constraints or edge cases"
             );
+        }
+    }
+
+    // --- CONCEPT SCAFFOLDING BANK FOR HINTS ---
+
+    public String getConceptScaffolding(String topic, int conceptIndex) {
+        String lower = topic != null ? topic.toLowerCase(Locale.ROOT) : "";
+        if (lower.contains("photosynthesis")) {
+            switch (conceptIndex) {
+                case 0:
+                    return "Plant leaves have green microscopic cellular kitchens called chloroplasts, packed with chlorophyll that absorb light rays from the sun.";
+                case 1:
+                    return "When sunlight hits chlorophyll, its energy splits water (H2O) into electrons, hydrogen ions, and oxygen gas (which we breathe!).";
+                case 2:
+                    return "In the Calvin cycle, the plant uses stored energy (ATP/NADPH) to turn carbon dioxide from the air into sugary food (glucose).";
+                case 3:
+                    return "Oxygen is actually released as a byproduct during the water-splitting light reactions.";
+                default:
+                    return "Photosynthesis converts radiant solar energy into stable chemical bonds in sugar.";
+            }
+        } else if (lower.contains("quicksort") || lower.contains("sort")) {
+            switch (conceptIndex) {
+                case 0:
+                    return "Think of picking a 'benchmark' or pivot value from the list, then throwing everything smaller to the left and larger to the right.";
+                case 1:
+                    return "Partitioning places the pivot exactly where it belongs in the final sorted order in just one linear pass.";
+                case 2:
+                    return "Because the pivot is locked in place, we can recursively sort the left half and right half independently.";
+                default:
+                    return "On average, dividing the problem in half yields O(N log N) speed, but choosing a bad pivot on already sorted data takes O(N^2).";
+            }
+        } else if (lower.contains("newton") || lower.contains("gravity") || lower.contains("motion")) {
+            switch (conceptIndex) {
+                case 0:
+                    return "Newton's First Law (Inertia): an object will keep sitting still or sliding at constant speed in a straight line forever unless an outside force nudges it.";
+                case 1:
+                    return "Newton's Second Law (F = ma): pushing harder gives more acceleration, but heavier mass resists acceleration.";
+                case 2:
+                    return "Newton's Third Law: forces always come in pairs. If you push a wall, the wall pushes right back on you with equal force.";
+                default:
+                    return "Mass is how much matter you have (kg), while weight is the gravitational pull acting on that mass (Newtons).";
+            }
+        } else if (lower.contains("deadlock")) {
+            switch (conceptIndex) {
+                case 0:
+                    return "Imagine two cars facing each other on a single-lane bridge where neither can back up and neither can proceed.";
+                case 1:
+                    return "Deadlock requires four conditions: mutual exclusion, hold-and-wait, no preemption, and circular wait.";
+                default:
+                    return "Dijkstra's Banker's Algorithm prevents deadlock by checking if granting a request keeps the system in a safe state.";
+            }
+        } else if (lower.contains("dna")) {
+            switch (conceptIndex) {
+                case 0:
+                    return "DNA is a twisted ladder (double helix) where Adenine only pairs with Thymine (A-T), and Cytosine pairs with Guanine (C-G).";
+                case 1:
+                    return "Helicase unzips the ladder down the middle, and DNA Polymerase builds new matching strands in the 5' to 3' direction.";
+                default:
+                    return "One strand builds smoothly (leading strand), while the other is assembled backwards in small Okazaki fragments (lagging strand).";
+            }
+        } else {
+            List<String> checklist = getTopicChecklist(topic);
+            int idx = Math.min(Math.max(0, conceptIndex), checklist.size() - 1);
+            return "Consider the role of " + checklist.get(idx) + " and why it is necessary.";
         }
     }
 
@@ -157,39 +248,43 @@ public class AIRepository {
                                      StudentReplyCallback callback) {
         executors.networkIO().execute(() -> {
             String apiKey = getApiKey();
+            String geminiError = null;
+
             if (apiKey != null && !apiKey.isEmpty()) {
                 try {
                     String reply = callGeminiForStudentReply(topic, persona, history, apiKey);
                     if (reply != null && !reply.trim().isEmpty()) {
-                        postToMain(() -> callback.onSuccess(reply.trim()));
+                        postToMain(() -> callback.onSuccessWithStatus(reply.trim(), true, null));
                         return;
                     }
                 } catch (Exception e) {
-                    // Fall back gracefully to local intelligent model
+                    geminiError = e.getMessage();
+                    Log.e(TAG, "Gemini API student reply failed: " + geminiError, e);
                 }
             }
 
-            // Local fallback simulation with persona directives
-            String reply = generateFallbackStudentReply(topic, persona, history);
-            postToMain(() -> callback.onSuccess(reply));
+            // Adaptive local simulation with persona directives and input comprehension
+            String fallbackReply = generateFallbackStudentReply(topic, persona, history);
+            final String finalError = geminiError;
+            postToMain(() -> callback.onSuccessWithStatus(fallbackReply, false, finalError));
         });
     }
 
-    private String generateFallbackStudentReply(String topic, Persona persona, List<Message> history) {
+    public String generateFallbackStudentReply(String topic, Persona persona, List<Message> history) {
         int learnerTurns = 0;
-        String lastLearnerText = "";
-        for (Message m : history) {
-            if (m.isFromLearner()) {
-                learnerTurns++;
-                lastLearnerText = m.getMessageText();
+        Message lastLearnerMessage = null;
+
+        if (history != null) {
+            for (Message m : history) {
+                if (m.isFromLearner()) {
+                    learnerTurns++;
+                    lastLearnerMessage = m;
+                }
             }
         }
 
-        List<String> checklist = getTopicChecklist(topic);
-        int checklistIndex = Math.min(learnerTurns, checklist.size() - 1);
-        String currentConcept = checklist.get(checklistIndex);
-
-        if (learnerTurns == 0) {
+        // Opening turn (no learner explanation yet)
+        if (learnerTurns == 0 || lastLearnerMessage == null) {
             switch (persona) {
                 case SKEPTICAL_PEER:
                     return "Hi! I heard you understand " + topic + ". Honestly, people often explain it too vaguely. Can you give me a crisp, unambiguous definition of what it actually is and why it exists?";
@@ -201,45 +296,157 @@ public class AIRepository {
             }
         }
 
-        // Subsequent turns probing the learner's explanation
+        String rawInput = lastLearnerMessage.getMessageText() != null
+                ? lastLearnerMessage.getMessageText().trim()
+                : "";
+
+        List<String> checklist = getTopicChecklist(topic);
+        int conceptIndex = Math.min(Math.max(0, learnerTurns - 1), checklist.size() - 1);
+        String currentConcept = checklist.get(conceptIndex);
+        String nextConcept = checklist.get(Math.min(conceptIndex + 1, checklist.size() - 1));
+
+        // 1. DETECT UNCERTAINTY ("I DON'T KNOW", "IDK", "NO IDEA", "NOT SURE", ETC.)
+        if (isUncertaintyOrIdk(rawInput)) {
+            String hint = getConceptScaffolding(topic, conceptIndex);
+            switch (persona) {
+                case SKEPTICAL_PEER:
+                    return "Wait, you're the teacher here—don't give up on me with 'I don't know'! Let's think through it together: "
+                            + hint + " Now that we have that clue, what would your guess be on how " + currentConcept + " works?";
+                case EXAM_STYLE:
+                    return "Understood. Leaving this blank on an exam forfeits marks. Consider this core concept: "
+                            + hint + " Based on that principle, what is the primary function of " + currentConcept + "?";
+                case BEGINNER:
+                default:
+                    return "That's totally okay! Learning can be tough at first. Let me give you a helpful clue: "
+                            + hint + " Does that help spark an idea? What do you think happens next?";
+            }
+        }
+
+        // 2. DETECT VERY SHORT / TRIVIAL INPUTS (e.g. "yes", "no", "ok", "fine", single word)
+        if (isVeryShortOrTrivial(rawInput)) {
+            switch (persona) {
+                case SKEPTICAL_PEER:
+                    return "Just '" + rawInput + "'? Come on, that doesn't prove anything! How would you convince someone that "
+                            + currentConcept + " actually works that way?";
+                case EXAM_STYLE:
+                    return "A brief response of '" + rawInput + "' is insufficient for full marks. Elaborate on the mechanism and principles behind "
+                            + currentConcept + ".";
+                case BEGINNER:
+                default:
+                    return "You mentioned '" + rawInput + "', but could you explain a little more about why? I'm trying to picture how "
+                            + currentConcept + " works!";
+            }
+        }
+
+        // 3. MEANINGFUL EXPLANATION: EXTRACT PHRASE & ADAPTIVELY PROBE NEXT CONCEPT
+        String snippet = extractKeyPhrase(rawInput);
         switch (persona) {
             case SKEPTICAL_PEER:
                 if (learnerTurns == 1) {
-                    return "Okay, I see your general point, but how does the mechanism actually work? Specifically, how do you account for " + currentConcept + "? What if conditions change?";
+                    return "Okay, so you're arguing that " + snippet + ". That sounds plausible, but how does the mechanism actually work? Specifically, how do you account for "
+                            + nextConcept + "?";
                 } else if (learnerTurns == 2) {
-                    return "That makes some sense, but isn't there an edge case here? How does " + currentConcept + " prevent errors or failure states?";
+                    return "I follow what you said about " + snippet + ", but isn't there an edge case here? How does "
+                            + nextConcept + " prevent errors or failure states?";
                 } else {
-                    return "Let me push back on that: why is " + currentConcept + " essential rather than just an optional detail? What breaks if we don't have it?";
+                    return "Let me push back on your point that " + snippet + ": why is "
+                            + nextConcept + " essential rather than just an optional detail? What breaks if we don't have it?";
                 }
             case EXAM_STYLE:
                 if (learnerTurns == 1) {
-                    return "Understood. Now describe the precise step-by-step mechanism involving " + currentConcept + ". Cite the specific components involved.";
+                    return "Good. Your explanation that " + snippet + " addresses the baseline definition. Now describe the precise step-by-step mechanism involving "
+                            + nextConcept + ".";
                 } else if (learnerTurns == 2) {
-                    return "Good. For full marks on an exam, explain the rationale behind " + currentConcept + ". What is the mathematical or causal relationship?";
+                    return "Understood regarding " + snippet + ". For full examination marks, explain the rationale behind "
+                            + nextConcept + ". Cite the causal relationship.";
                 } else {
-                    return "To conclude this topic, how does " + currentConcept + " integrate with the overall system? State any necessary preconditions.";
+                    return "To conclude this review, how does your statement that " + snippet + " integrate with "
+                            + nextConcept + "? State any necessary preconditions.";
                 }
             case BEGINNER:
             default:
                 if (learnerTurns == 1) {
-                    return "Oh, that's interesting! But I got a bit confused about how it works inside. What actually happens during " + currentConcept + "? Could you give me an everyday analogy?";
+                    return "Oh, that's really neat! So when you said that " + snippet + ", that helped me picture it. But what actually happens during "
+                            + nextConcept + "? Could you give me an everyday analogy?";
                 } else if (learnerTurns == 2) {
-                    return "I think I'm starting to get it! But why is " + currentConcept + " necessary? What happens if that part is missing?";
+                    return "I think I'm starting to get it! You mentioned " + snippet + ", which makes sense, but why is "
+                            + nextConcept + " necessary? What happens if that part is missing?";
                 } else {
-                    return "That helps a lot! One last question to make sure I really understand: how does " + currentConcept + " connect back to the big picture?";
+                    return "That helps so much! One last question to make sure I really understand: how does "
+                            + snippet + " connect back to " + nextConcept + " in the big picture?";
                 }
         }
+    }
+
+    private boolean isUncertaintyOrIdk(String text) {
+        if (text == null) return true;
+        String clean = text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9 ]", " ").trim();
+        return clean.equals("idk")
+                || clean.equals("i dont know")
+                || clean.equals("i don t know")
+                || clean.equals("i do not know")
+                || clean.equals("dont know")
+                || clean.equals("no idea")
+                || clean.equals("i have no idea")
+                || clean.equals("not sure")
+                || clean.equals("im not sure")
+                || clean.equals("i am not sure")
+                || clean.equals("dont understand")
+                || clean.equals("i dont understand")
+                || clean.equals("what")
+                || clean.equals("help")
+                || clean.equals("skip")
+                || clean.equals("pass")
+                || clean.equals("tell me")
+                || clean.equals("you tell me")
+                || clean.equals("i forgot")
+                || clean.contains("i dont know")
+                || clean.contains("i don t know")
+                || clean.contains("i do not know")
+                || clean.contains("no idea")
+                || clean.contains("not sure")
+                || clean.contains("have no clue")
+                || clean.contains("can you tell me")
+                || clean.contains("i have forgotten");
+    }
+
+    private boolean isVeryShortOrTrivial(String text) {
+        if (text == null) return true;
+        String[] words = text.trim().split("\\s+");
+        return words.length <= 2;
+    }
+
+    private String extractKeyPhrase(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return "your explanation";
+        }
+        String clean = text.trim();
+        // Remove trailing punctuation
+        clean = clean.replaceAll("[.!?]+$", "");
+        String[] words = clean.split("\\s+");
+        if (words.length <= 7) {
+            return "\"" + clean + "\"";
+        }
+        // Take the first 6-7 words
+        StringBuilder sb = new StringBuilder("\"");
+        for (int i = 0; i < Math.min(6, words.length); i++) {
+            if (i > 0) sb.append(" ");
+            sb.append(words[i]);
+        }
+        sb.append("...\"");
+        return sb.toString();
     }
 
     // --- EVALUATION MODE ---
 
     public void evaluateSession(String topic, List<Message> history, EvaluationCallback callback) {
         executors.networkIO().execute(() -> {
-            // Filter strictly to the learner's own messages
             List<Message> learnerMessages = new ArrayList<>();
-            for (Message m : history) {
-                if (m.isFromLearner()) {
-                    learnerMessages.add(m);
+            if (history != null) {
+                for (Message m : history) {
+                    if (m.isFromLearner()) {
+                        learnerMessages.add(m);
+                    }
                 }
             }
 
@@ -249,31 +456,25 @@ public class AIRepository {
             }
 
             String apiKey = getApiKey();
+            String geminiError = null;
+
             if (apiKey != null && !apiKey.isEmpty()) {
-                // Attempt schema-constrained Gemini evaluation with 1 retry
                 try {
                     Evaluation eval = callGeminiForEvaluation(topic, learnerMessages, apiKey);
                     if (eval != null) {
-                        postToMain(() -> callback.onSuccess(eval));
+                        postToMain(() -> callback.onSuccessWithStatus(eval, true, null));
                         return;
                     }
-                } catch (Exception firstErr) {
-                    // Retry once as per plan
-                    try {
-                        Evaluation retryEval = callGeminiForEvaluation(topic, learnerMessages, apiKey);
-                        if (retryEval != null) {
-                            postToMain(() -> callback.onSuccess(retryEval));
-                            return;
-                        }
-                    } catch (Exception retryErr) {
-                        // Fall back to local rubric engine
-                    }
+                } catch (Exception e) {
+                    geminiError = e.getMessage();
+                    Log.e(TAG, "Gemini evaluation failed: " + geminiError, e);
                 }
             }
 
-            // Local rubric evaluation engine (satisfies schema validation, bounds checking, checklist coverage)
-            Evaluation eval = evaluateLocally(topic, learnerMessages);
-            postToMain(() -> callback.onSuccess(eval));
+            // Local rubric evaluation fallback
+            Evaluation localEval = evaluateLocally(topic, learnerMessages);
+            final String finalError = geminiError;
+            postToMain(() -> callback.onSuccessWithStatus(localEval, false, finalError));
         });
     }
 
@@ -288,15 +489,14 @@ public class AIRepository {
             wordCount += words.length;
         }
 
-        String combinedText = fullLearnerText.toString().toLowerCase();
+        String combinedText = fullLearnerText.toString().toLowerCase(Locale.ROOT);
 
-        // 1. Completeness: Measure checklist coverage
         int coveredConcepts = 0;
         List<String> strengths = new ArrayList<>();
         List<String> improvements = new ArrayList<>();
 
         for (String concept : checklist) {
-            String[] keywords = concept.toLowerCase().replace("(", "").replace(")", "").split("[ ,/]+");
+            String[] keywords = concept.toLowerCase(Locale.ROOT).replace("(", "").replace(")", "").split("[ ,/]+");
             boolean found = false;
             for (String kw : keywords) {
                 if (kw.length() > 3 && combinedText.contains(kw)) {
@@ -315,7 +515,6 @@ public class AIRepository {
         double completeness = Math.min(100.0, Math.max(30.0,
                 (checklist.isEmpty() ? 70.0 : ((double) coveredConcepts / checklist.size()) * 100.0)));
 
-        // 2. Accuracy: Length, keyword presence, lack of obvious invalid claims
         double accuracy = 80.0;
         if (wordCount > 120 && coveredConcepts >= 3) {
             accuracy = 90.0;
@@ -323,7 +522,6 @@ public class AIRepository {
             accuracy = 65.0;
         }
 
-        // 3. Clarity: Organization, paragraphing, sentence length
         double clarity = 75.0;
         if (wordCount > 50 && learnerMessages.size() >= 2) {
             clarity = 85.0;
@@ -333,7 +531,6 @@ public class AIRepository {
         }
         clarity = Math.min(100.0, clarity);
 
-        // 4. Reasoning: Explaining WHY and HOW (causal connectors)
         double reasoning = 60.0;
         int causalTerms = 0;
         String[] connectors = {"because", "therefore", "as a result", "leads to", "causes", "in order to", "mechanism", "why"};
@@ -345,7 +542,6 @@ public class AIRepository {
         reasoning += Math.min(35.0, causalTerms * 10.0);
         reasoning = Math.min(100.0, reasoning);
 
-        // Check for misconceptions
         List<Misconception> misconceptions = new ArrayList<>();
         if (combinedText.contains("opposite") && combinedText.contains("mass")) {
             misconceptions.add(new Misconception(
@@ -385,76 +581,170 @@ public class AIRepository {
     // --- GEMINI REST API INTEGRATION ---
 
     private String callGeminiForStudentReply(String topic, Persona persona, List<Message> history, String apiKey) throws Exception {
-        URL url = new URL(GEMINI_API_URL_TEMPLATE + apiKey);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setConnectTimeout(10000);
-        conn.setReadTimeout(15000);
-        conn.setDoOutput(true);
-
         JsonObject root = new JsonObject();
-        JsonArray contents = new JsonArray();
 
-        // System Instruction persona
+        // 1. System Instruction persona
         JsonObject systemInstruction = new JsonObject();
-        JsonObject sysParts = new JsonObject();
-        sysParts.addProperty("text", persona.getSystemPromptDirective() +
-                " You are an AI student being taught '" + topic + "'. Ask exactly ONE focused question per turn. Never give away the answer or write a full essay.");
         JsonArray sysArray = new JsonArray();
+        JsonObject sysParts = new JsonObject();
+        String sysText = "You are an interactive AI student being taught about '" + topic + "' by a human teacher.\n"
+                + "Your persona: " + persona.getDisplayName() + ". " + persona.getSystemPromptDirective() + "\n\n"
+                + "CRITICAL RULES:\n"
+                + "1. You are the STUDENT, NOT the teacher. Do NOT lecture, summarize the topic, or explain the solution.\n"
+                + "2. Carefully read the teacher's latest message and react directly to what they said:\n"
+                + "   - If the teacher says 'I don't know', 'no idea', or asks for help, react in character (e.g. give a hint, offer a simple sub-question, or share an intuitive analogy).\n"
+                + "   - If the teacher explains a concept, acknowledge their explanation and ask a probing follow-up question to test depth, causality, or edge cases.\n"
+                + "   - If the teacher writes a vague or one-word answer, ask them to clarify or elaborate.\n"
+                + "3. Ask exactly ONE focused question per turn.\n"
+                + "4. Keep your response concise (1 to 3 sentences maximum).\n"
+                + "5. Stay in character.";
+        sysParts.addProperty("text", sysText);
         sysArray.add(sysParts);
         systemInstruction.add("parts", sysArray);
         root.add("systemInstruction", systemInstruction);
 
-        // Conversation history
-        for (Message m : history) {
-            JsonObject turn = new JsonObject();
-            turn.addProperty("role", m.isFromLearner() ? "user" : "model");
-            JsonArray parts = new JsonArray();
+        // 2. Generation Config
+        JsonObject genConfig = new JsonObject();
+        genConfig.addProperty("temperature", 0.7);
+        genConfig.addProperty("maxOutputTokens", 250);
+        root.add("generationConfig", genConfig);
+
+        // 3. Contents Array (Must obey Gemini rules: starts with user, strictly alternates)
+        JsonArray contents = new JsonArray();
+
+        if (history == null || history.isEmpty()) {
+            JsonObject openingTurn = new JsonObject();
+            openingTurn.addProperty("role", "user");
+            JsonArray pArray = new JsonArray();
             JsonObject p = new JsonObject();
-            p.addProperty("text", m.getMessageText());
-            parts.add(p);
-            turn.add("parts", parts);
-            contents.add(turn);
+            p.addProperty("text", "Hello! I am your teacher today, and I will teach you about '" + topic + "'. Introduce yourself briefly in character and ask your very first question to start learning.");
+            pArray.add(p);
+            openingTurn.add("parts", pArray);
+            contents.add(openingTurn);
+        } else {
+            // First turn in contents MUST be 'user'
+            JsonObject startTurn = new JsonObject();
+            startTurn.addProperty("role", "user");
+            JsonArray startParts = new JsonArray();
+            JsonObject startP = new JsonObject();
+            startP.addProperty("text", "I am your teacher, teaching you about '" + topic + "'. Please ask me questions so you can learn.");
+            startParts.add(startP);
+            startTurn.add("parts", startParts);
+            contents.add(startTurn);
+
+            String lastRole = "user";
+            for (Message m : history) {
+                String role = m.isFromLearner() ? "user" : "model";
+                String text = m.getMessageText() != null ? m.getMessageText().trim() : "";
+                if (text.isEmpty()) continue;
+
+                if (role.equals(lastRole)) {
+                    // Merge consecutive turns with same role
+                    JsonObject lastTurn = contents.get(contents.size() - 1).getAsJsonObject();
+                    JsonArray parts = lastTurn.getAsJsonArray("parts");
+                    JsonObject lastPart = parts.get(parts.size() - 1).getAsJsonObject();
+                    String prevText = lastPart.get("text").getAsString();
+                    lastPart.addProperty("text", prevText + "\n" + text);
+                } else {
+                    JsonObject turn = new JsonObject();
+                    turn.addProperty("role", role);
+                    JsonArray parts = new JsonArray();
+                    JsonObject p = new JsonObject();
+                    p.addProperty("text", text);
+                    parts.add(p);
+                    turn.add("parts", parts);
+                    contents.add(turn);
+                    lastRole = role;
+                }
+            }
+
+            // Ensure last turn is 'user' so model responds
+            if (!"user".equals(lastRole)) {
+                JsonObject promptTurn = new JsonObject();
+                promptTurn.addProperty("role", "user");
+                JsonArray parts = new JsonArray();
+                JsonObject p = new JsonObject();
+                p.addProperty("text", "Please ask me your next question about " + topic + ".");
+                parts.add(p);
+                promptTurn.add("parts", parts);
+                contents.add(promptTurn);
+            }
         }
         root.add("contents", contents);
 
         byte[] body = root.toString().getBytes(StandardCharsets.UTF_8);
-        try (OutputStream os = conn.getOutputStream()) {
-            os.write(body);
+        Exception lastException = null;
+
+        for (String modelName : GEMINI_MODELS) {
+            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey.trim();
+            try {
+                URL url = new URL(endpoint);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setConnectTimeout(12000);
+                conn.setReadTimeout(18000);
+                conn.setDoOutput(true);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body);
+                }
+
+                int respCode = conn.getResponseCode();
+                if (respCode == 200) {
+                    try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = br.readLine()) != null) sb.append(line);
+                        JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
+                        if (res.has("candidates") && res.getAsJsonArray("candidates").size() > 0) {
+                            JsonObject cand = res.getAsJsonArray("candidates").get(0).getAsJsonObject();
+                            JsonObject content = cand.getAsJsonObject("content");
+                            if (content != null && content.has("parts")) {
+                                JsonArray parts = content.getAsJsonArray("parts");
+                                if (parts.size() > 0) {
+                                    String text = parts.get(0).getAsJsonObject().get("text").getAsString();
+                                    if (text != null && !text.trim().isEmpty()) {
+                                        return text.trim();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    String errorBody = "";
+                    try (BufferedReader errBr = new BufferedReader(new InputStreamReader(conn.getErrorStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder errSb = new StringBuilder();
+                        String line;
+                        while ((line = errBr.readLine()) != null) errSb.append(line);
+                        errorBody = errSb.toString();
+                    } catch (Exception ignored) {}
+                    Log.e(TAG, "Gemini API HTTP " + respCode + " on " + modelName + ": " + errorBody);
+                    lastException = new IOException("HTTP " + respCode + ": " + errorBody);
+                    if (respCode != 404) {
+                        throw lastException;
+                    }
+                }
+            } catch (Exception e) {
+                lastException = e;
+                if (e.getMessage() != null && !e.getMessage().contains("HTTP 404")) {
+                    throw e;
+                }
+            }
         }
 
-        if (conn.getResponseCode() == 200) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
-                return res.getAsJsonArray("candidates")
-                        .get(0).getAsJsonObject()
-                        .getAsJsonObject("content")
-                        .getAsJsonArray("parts")
-                        .get(0).getAsJsonObject()
-                        .get("text").getAsString();
-            }
+        if (lastException != null) {
+            throw lastException;
         }
         return null;
     }
 
     private Evaluation callGeminiForEvaluation(String topic, List<Message> learnerMessages, String apiKey) throws Exception {
-        URL url = new URL(GEMINI_API_URL_TEMPLATE + apiKey);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setConnectTimeout(12000);
-        conn.setReadTimeout(18000);
-        conn.setDoOutput(true);
-
         JsonObject root = new JsonObject();
 
-        // Generation Config with JSON Schema mode
         JsonObject genConfig = new JsonObject();
         genConfig.addProperty("responseMimeType", "application/json");
+        genConfig.addProperty("temperature", 0.2);
         root.add("generationConfig", genConfig);
 
         StringBuilder learnerTranscript = new StringBuilder();
@@ -493,25 +783,63 @@ public class AIRepository {
         root.add("contents", contents);
 
         byte[] body = root.toString().getBytes(StandardCharsets.UTF_8);
-        try (OutputStream os = conn.getOutputStream()) {
-            os.write(body);
+        Exception lastException = null;
+
+        for (String modelName : GEMINI_MODELS) {
+            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey.trim();
+            try {
+                URL url = new URL(endpoint);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setConnectTimeout(14000);
+                conn.setReadTimeout(20000);
+                conn.setDoOutput(true);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body);
+                }
+
+                int respCode = conn.getResponseCode();
+                if (respCode == 200) {
+                    try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = br.readLine()) != null) sb.append(line);
+                        JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
+                        String jsonText = res.getAsJsonArray("candidates")
+                                .get(0).getAsJsonObject()
+                                .getAsJsonObject("content")
+                                .getAsJsonArray("parts")
+                                .get(0).getAsJsonObject()
+                                .get("text").getAsString();
+
+                        return parseAndValidateEvaluationJson(jsonText);
+                    }
+                } else {
+                    String errorBody = "";
+                    try (BufferedReader errBr = new BufferedReader(new InputStreamReader(conn.getErrorStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder errSb = new StringBuilder();
+                        String line;
+                        while ((line = errBr.readLine()) != null) errSb.append(line);
+                        errorBody = errSb.toString();
+                    } catch (Exception ignored) {}
+                    Log.e(TAG, "Gemini evaluation HTTP " + respCode + " on " + modelName + ": " + errorBody);
+                    lastException = new IOException("HTTP " + respCode + ": " + errorBody);
+                    if (respCode != 404) {
+                        throw lastException;
+                    }
+                }
+            } catch (Exception e) {
+                lastException = e;
+                if (e.getMessage() != null && !e.getMessage().contains("HTTP 404")) {
+                    throw e;
+                }
+            }
         }
 
-        if (conn.getResponseCode() == 200) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
-                String jsonText = res.getAsJsonArray("candidates")
-                        .get(0).getAsJsonObject()
-                        .getAsJsonObject("content")
-                        .getAsJsonArray("parts")
-                        .get(0).getAsJsonObject()
-                        .get("text").getAsString();
-
-                return parseAndValidateEvaluationJson(jsonText);
-            }
+        if (lastException != null) {
+            throw lastException;
         }
         return null;
     }

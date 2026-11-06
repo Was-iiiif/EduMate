@@ -63,7 +63,11 @@ public class SettingsActivity extends AppCompatActivity {
                     ? binding.etApiKey.getText().toString().trim()
                     : "";
             aiRepository.setApiKey(key);
-            Toast.makeText(this, "API Key saved successfully.", Toast.LENGTH_SHORT).show();
+            if (key.isEmpty()) {
+                Toast.makeText(this, "API Key cleared. Using adaptive offline AI student.", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Gemini API Key saved! Cloud AI active.", Toast.LENGTH_SHORT).show();
+            }
         });
 
         binding.btnClearData.setOnClickListener(v -> {

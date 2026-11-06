@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def geminiApiKey = localProperties.getProperty('GEMINI_API_KEY', '')
+if (!geminiApiKey && project.hasProperty('GEMINI_API_KEY')) {
+    geminiApiKey = project.property('GEMINI_API_KEY')
+}
+
 android {
     namespace 'com.edumate.app'
     compileSdk 33
@@ -12,6 +22,8 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField "String", "GEMINI_API_KEY", "\"${geminiApiKey}\""
     }
 
     buildTypes {

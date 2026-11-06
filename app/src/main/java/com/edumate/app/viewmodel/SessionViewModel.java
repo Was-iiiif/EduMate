@@ -33,6 +33,7 @@ public class SessionViewModel extends AndroidViewModel {
     private final MutableLiveData<Integer> currentTurn = new MutableLiveData<>(1);
     private final MutableLiveData<String> latestStudentQuestion = new MutableLiveData<>();
     private final MutableLiveData<Boolean> isTtsSpeaking = new MutableLiveData<>(false);
+    private final MutableLiveData<String> aiEngineStatus = new MutableLiveData<>("Offline Student");
 
     private boolean isInitialized = false;
 
@@ -45,6 +46,12 @@ public class SessionViewModel extends AndroidViewModel {
     public void initSession(String topic, Persona persona, String existingSessionId) {
         if (isInitialized) return;
         isInitialized = true;
+
+        if (aiRepository.hasApiKey()) {
+            aiEngineStatus.setValue("⚡ Gemini AI");
+        } else {
+            aiEngineStatus.setValue("Offline Student");
+        }
 
         if (existingSessionId != null && !existingSessionId.isEmpty()) {
             sessionRepository.getSessionById(existingSessionId, session -> {
@@ -106,7 +113,24 @@ public class SessionViewModel extends AndroidViewModel {
         aiRepository.generateStudentReply(session.getTopic(), p, history, new AIRepository.StudentReplyCallback() {
             @Override
             public void onSuccess(String studentReply) {
+                onSuccessWithStatus(studentReply, false, null);
+            }
+
+            @Override
+            public void onSuccessWithStatus(String studentReply, boolean isFromGemini, String geminiError) {
                 isLoading.setValue(false);
+                if (isFromGemini) {
+                    aiEngineStatus.setValue("⚡ Gemini AI");
+                } else {
+                    if (geminiError != null) {
+                        aiEngineStatus.setValue("Offline Student");
+                        errorMessage.setValue("Gemini API: " + geminiError + "\nUsing adaptive offline student.");
+                    } else if (aiRepository.hasApiKey()) {
+                        aiEngineStatus.setValue("⚡ Gemini AI");
+                    } else {
+                        aiEngineStatus.setValue("Offline Student");
+                    }
+                }
                 Message studentMsg = new Message(session.getId(), Message.SENDER_STUDENT, studentReply);
                 sessionRepository.insertMessage(studentMsg, id -> {
                     List<Message> currentList = messagesLiveData.getValue();
@@ -137,7 +161,15 @@ public class SessionViewModel extends AndroidViewModel {
         aiRepository.evaluateSession(session.getTopic(), currentList, new AIRepository.EvaluationCallback() {
             @Override
             public void onSuccess(Evaluation eval) {
+                onSuccessWithStatus(eval, false, null);
+            }
+
+            @Override
+            public void onSuccessWithStatus(Evaluation eval, boolean isFromGemini, String geminiError) {
                 isEvaluating.setValue(false);
+                if (!isFromGemini && geminiError != null) {
+                    errorMessage.setValue("Gemini evaluation: " + geminiError + "\nComputed using offline rubric engine.");
+                }
                 // Complete session in transactional SQLite write
                 sessionRepository.completeSessionWithEvaluation(session, eval, success -> {
                     if (success) {
@@ -176,6 +208,7 @@ public class SessionViewModel extends AndroidViewModel {
     public LiveData<Integer> getCurrentTurn() { return currentTurn; }
     public LiveData<String> getLatestStudentQuestion() { return latestStudentQuestion; }
     public LiveData<Boolean> getIsTtsSpeaking() { return isTtsSpeaking; }
+    public LiveData<String> getAiEngineStatus() { return aiEngineStatus; }
 
     public void setTtsSpeaking(boolean speaking) {
         isTtsSpeaking.setValue(speaking);
