@@ -47,7 +47,10 @@ public class AIRepository {
     public static final String KEY_GEMINI_API_KEY = "gemini_api_key";
 
     private static final String[] GEMINI_MODELS = new String[] {
-            "gemini-3.8-flash"
+            "gemini-3.8-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b"
     };
 
     private static boolean shouldRetryWithNextModel(int respCode) {
@@ -258,14 +261,9 @@ public class AIRepository {
                     } else if (respCode == 503 || respCode == 429) {
                         String errorBody = readStream(conn.getErrorStream());
                         String formatted = formatApiError(respCode, errorBody);
-                        Log.w(TAG, "Ping on " + modelName + " returned HTTP " + respCode + " (attempt " + attempt + "/" + maxRetries + "): " + formatted);
+                        Log.w(TAG, "Ping on " + modelName + " returned HTTP " + respCode + ": " + formatted);
                         lastException = new IOException(formatted);
-                        if (attempt < maxRetries) {
-                            try {
-                                Thread.sleep(1500L * attempt);
-                            } catch (InterruptedException ignored) {}
-                            continue;
-                        }
+                        break;
                     } else {
                         String errorBody = readStream(conn.getErrorStream());
                         String formatted = formatApiError(respCode, errorBody);
@@ -886,14 +884,9 @@ public class AIRepository {
                     } else if (respCode == 503 || respCode == 429) {
                         String errorBody = readStream(conn.getErrorStream());
                         String formatted = formatApiError(respCode, errorBody);
-                        Log.w(TAG, modelName + " returned HTTP " + respCode + " (attempt " + attempt + "/" + maxRetries + "): " + formatted);
+                        Log.w(TAG, modelName + " returned HTTP " + respCode + ": " + formatted);
                         lastException = new IOException(formatted);
-                        if (attempt < maxRetries) {
-                            try {
-                                Thread.sleep(1500L * attempt);
-                            } catch (InterruptedException ignored) {}
-                            continue;
-                        }
+                        break;
                     } else {
                         String errorBody = readStream(conn.getErrorStream());
                         String formatted = formatApiError(respCode, errorBody);
@@ -1003,14 +996,9 @@ public class AIRepository {
                     } else if (respCode == 503 || respCode == 429) {
                         String errorBody = readStream(conn.getErrorStream());
                         String formatted = formatApiError(respCode, errorBody);
-                        Log.w(TAG, "Evaluation on " + modelName + " returned HTTP " + respCode + " (attempt " + attempt + "/" + maxRetries + "): " + formatted);
+                        Log.w(TAG, "Evaluation on " + modelName + " returned HTTP " + respCode + ": " + formatted);
                         lastException = new IOException(formatted);
-                        if (attempt < maxRetries) {
-                            try {
-                                Thread.sleep(1500L * attempt);
-                            } catch (InterruptedException ignored) {}
-                            continue;
-                        }
+                        break;
                     } else {
                         String errorBody = readStream(conn.getErrorStream());
                         String formatted = formatApiError(respCode, errorBody);
@@ -1134,7 +1122,7 @@ public class AIRepository {
         } else if (respCode == 429) {
             return "Gemini 429: Rate limit exceeded. Please wait a moment.";
         } else if (respCode == 503) {
-            return "Gemini 503: The model 'gemini-3.8-flash' is temporarily overloaded (" + (detail.isEmpty() ? "Service Unavailable" : detail) + "). Retrying or using offline student.";
+            return "Gemini 503: The service is temporarily unavailable (" + (detail.isEmpty() ? "Service Unavailable" : detail) + "). Retrying with fallback model or offline student.";
         }
         return "Gemini HTTP " + respCode + (!detail.isEmpty() ? ": " + detail : "");
     }
