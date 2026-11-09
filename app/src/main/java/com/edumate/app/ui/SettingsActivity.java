@@ -11,7 +11,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.edumate.app.R;
 import com.edumate.app.databinding.ActivitySettingsBinding;
-import com.edumate.app.repository.AIRepository;
 import com.edumate.app.repository.SessionRepository;
 import com.edumate.app.repository.SyncRepository;
 import com.google.firebase.auth.FirebaseAuth;
@@ -22,7 +21,6 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String KEY_AUTO_PLAY_TTS = "auto_play_tts";
 
     private ActivitySettingsBinding binding;
-    private AIRepository aiRepository;
     private SessionRepository sessionRepository;
     private SyncRepository syncRepository;
 
@@ -32,7 +30,6 @@ public class SettingsActivity extends AppCompatActivity {
         binding = ActivitySettingsBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        aiRepository = AIRepository.getInstance(this);
         sessionRepository = SessionRepository.getInstance(this);
         syncRepository = SyncRepository.getInstance(this);
 
@@ -45,18 +42,15 @@ public class SettingsActivity extends AppCompatActivity {
         boolean autoTts = sp.getBoolean(KEY_AUTO_PLAY_TTS, true);
         binding.switchTtsAuto.setChecked(autoTts);
 
-        String currentApiKey = aiRepository.getApiKey();
-        if (currentApiKey != null && !currentApiKey.isEmpty()) {
-            binding.etApiKey.setText(currentApiKey);
-        }
-
         try {
             FirebaseAuth auth = FirebaseAuth.getInstance();
             FirebaseUser user = auth.getCurrentUser();
             if (user != null) {
-                String email = user.getEmail() != null && !user.getEmail().isEmpty() ? user.getEmail() : "Guest Account";
-                String name = user.getDisplayName() != null && !user.getDisplayName().isEmpty() ? user.getDisplayName() + "\n" : "";
-                binding.tvUserId.setText(name + email + "\nUID: " + user.getUid());
+                String email = user.getEmail() != null && !user.getEmail().isEmpty()
+                        ? user.getEmail() : "Guest Account";
+                String name = user.getDisplayName() != null && !user.getDisplayName().isEmpty()
+                        ? user.getDisplayName() + "\n" : "";
+                binding.tvUserId.setText(name + email);
                 binding.btnSignOut.setVisibility(android.view.View.VISIBLE);
             } else {
                 binding.tvUserId.setText(syncRepository.getOrCreateUserUid());
@@ -94,38 +88,6 @@ public class SettingsActivity extends AppCompatActivity {
                     .show();
         });
 
-        binding.btnSaveApiKey.setOnClickListener(v -> {
-            String rawKey = binding.etApiKey.getText() != null
-                    ? binding.etApiKey.getText().toString()
-                    : "";
-            String key = AIRepository.sanitizeApiKey(rawKey);
-            binding.etApiKey.setText(key);
-            aiRepository.setApiKey(key);
-
-            if (key.isEmpty()) {
-                binding.tvApiKeyStatus.setText("API Key cleared. Using adaptive offline AI student.");
-                binding.tvApiKeyStatus.setTextColor(getColor(R.color.text_secondary));
-                Toast.makeText(this, "API Key cleared. Offline AI student active.", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "API Key saved. Testing connection...", Toast.LENGTH_SHORT).show();
-                testKeyInternal(key);
-            }
-        });
-
-        binding.btnTestApiKey.setOnClickListener(v -> {
-            String rawKey = binding.etApiKey.getText() != null
-                    ? binding.etApiKey.getText().toString()
-                    : "";
-            String key = AIRepository.sanitizeApiKey(rawKey);
-            binding.etApiKey.setText(key);
-
-            if (key.isEmpty()) {
-                Toast.makeText(this, "Please enter an API key to test.", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            testKeyInternal(key);
-        });
-
         binding.btnClearData.setOnClickListener(v -> {
             new AlertDialog.Builder(this)
                     .setTitle("Clear All Local Data")
@@ -137,62 +99,6 @@ public class SettingsActivity extends AppCompatActivity {
                     })
                     .setNegativeButton(R.string.action_cancel, null)
                     .show();
-        });
-    }
-
-    private void testKeyInternal(String key) {
-        binding.tvApiKeyStatus.setText("Testing connection to Google Gemini API...");
-        binding.tvApiKeyStatus.setTextColor(getColor(R.color.primary));
-        binding.btnTestApiKey.setEnabled(false);
-        binding.btnSaveApiKey.setEnabled(false);
-
-        aiRepository.testApiKey(key, new AIRepository.TestApiKeyCallback() {
-            @Override
-            public void onSuccess(String modelUsed) {
-                binding.btnTestApiKey.setEnabled(true);
-                binding.btnSaveApiKey.setEnabled(true);
-                binding.tvApiKeyStatus.setText("✓ Connection Verified! Active model: " + modelUsed);
-                binding.tvApiKeyStatus.setTextColor(0xFF16A34A);
-                Toast.makeText(SettingsActivity.this, "Gemini Connected! (" + modelUsed + ")", Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onError(String errorMessage) {
-                binding.btnTestApiKey.setEnabled(true);
-                binding.btnSaveApiKey.setEnabled(true);
-
-                String shortStatus = errorMessage;
-                if (shortStatus != null && shortStatus.contains("\n")) {
-                    shortStatus = shortStatus.substring(0, shortStatus.indexOf("\n")).trim();
-                }
-                binding.tvApiKeyStatus.setText("✗ " + shortStatus);
-                binding.tvApiKeyStatus.setTextColor(0xFFDC2626);
-
-                boolean isNetworkIssue = errorMessage != null && (
-                        errorMessage.contains("Timed Out")
-                                || errorMessage.contains("Internet Connection")
-                                || errorMessage.contains("Network")
-                                || errorMessage.contains("Connection Refused")
-                );
-
-                String dialogTitle = isNetworkIssue ? "Network Connection Issue" : "Gemini API Error";
-
-                AlertDialog.Builder builder = new AlertDialog.Builder(SettingsActivity.this)
-                        .setTitle(dialogTitle)
-                        .setPositiveButton("OK", null);
-
-                if (errorMessage != null && errorMessage.contains("Troubleshooting:")) {
-                    builder.setMessage(errorMessage);
-                } else {
-                    builder.setMessage(errorMessage + "\n\nTroubleshooting Guide:\n"
-                            + "• Verify your key at: https://aistudio.google.com/app/apikey\n"
-                            + "• In Google Cloud Console -> Credentials -> API Key:\n"
-                            + "  - Set Application Restrictions to 'None'\n"
-                            + "  - Ensure 'Generative Language API' is enabled\n"
-                            + "• If you don't have a key, leave it empty to use EduMate's adaptive offline student!");
-                }
-                builder.show();
-            }
         });
     }
 }
