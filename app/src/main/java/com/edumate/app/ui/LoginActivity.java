@@ -34,8 +34,9 @@ public class LoginActivity extends AppCompatActivity {
 
     private final ActivityResultLauncher<Intent> googleSignInLauncher =
             registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
-                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                    Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(result.getData());
+                Intent data = result.getData();
+                if (data != null) {
+                    Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
                     try {
                         GoogleSignInAccount account = task.getResult(ApiException.class);
                         if (account != null && account.getIdToken() != null) {
@@ -46,7 +47,20 @@ public class LoginActivity extends AppCompatActivity {
                         }
                     } catch (ApiException e) {
                         setLoading(false);
-                        showError("Google sign-in failed (Code " + e.getStatusCode() + "): " + e.getMessage());
+                        int code = e.getStatusCode();
+                        String friendlyError;
+                        if (code == 10 || code == 12500) {
+                            friendlyError = "Google Sign-In Configuration Error (Code " + code + "):\n\n"
+                                    + "The SHA-1 certificate fingerprint of your Android device/keystore is not registered in Firebase Console.\n\n"
+                                    + "To fix: Go to Firebase Console -> Project Settings -> com.edumate.app -> Add SHA-1 fingerprint.";
+                        } else if (code == 7) {
+                            friendlyError = "Network error (Code 7): Please check your internet connection.";
+                        } else if (code == 12501) {
+                            friendlyError = "Sign-in cancelled.";
+                        } else {
+                            friendlyError = "Google sign-in failed (Code " + code + "): " + e.getMessage();
+                        }
+                        showError(friendlyError);
                     }
                 } else {
                     setLoading(false);
@@ -119,9 +133,9 @@ public class LoginActivity extends AppCompatActivity {
         int clientIdRes = getResources().getIdentifier("default_web_client_id", "string", getPackageName());
         String webClientId = clientIdRes != 0 ? getString(clientIdRes) : "";
 
+        // Fallback to client_type 3 client_id from google-services.json
         if (webClientId.isEmpty()) {
-            showError("Google Sign-In requires google-services.json with web client ID configured. Use Email or Guest login in the meantime.");
-            return;
+            webClientId = "985383729246-39vnket07acdrssakrdiho3oqljt9sng.apps.googleusercontent.com";
         }
 
         setLoading(true);
@@ -133,14 +147,15 @@ public class LoginActivity extends AppCompatActivity {
                     .requestEmail()
                     .build();
             GoogleSignInClient googleSignInClient = GoogleSignIn.getClient(this, gso);
-            // Sign out prior client session so account picker is always presented
-            googleSignInClient.signOut().addOnCompleteListener(this, task -> {
-                Intent signInIntent = googleSignInClient.getSignInIntent();
-                googleSignInLauncher.launch(signInIntent);
-            });
+
+            // Asynchronously sign out so user can pick an account
+            googleSignInClient.signOut();
+
+            Intent signInIntent = googleSignInClient.getSignInIntent();
+            googleSignInLauncher.launch(signInIntent);
         } catch (Exception e) {
             setLoading(false);
-            showError("Failed to initialize Google Sign In: " + e.getMessage());
+            showError("Failed to launch Google Sign In: " + e.getMessage());
         }
     }
 

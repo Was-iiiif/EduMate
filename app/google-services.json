@@ -12,7 +12,12 @@
           "package_name": "com.edumate.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "985383729246-39vnket07acdrssakrdiho3oqljt9sng.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyACUhY0hOsmtVVufM5KjgST0gAsrKPVtaA"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "985383729246-39vnket07acdrssakrdiho3oqljt9sng.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
