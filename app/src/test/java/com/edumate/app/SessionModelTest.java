@@ -3,9 +3,9 @@ package com.edumate.app;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import com.edumate.app.model.Persona;
 import com.edumate.app.model.Session;
 
 import org.junit.Test;
@@ -20,7 +20,14 @@ public class SessionModelTest {
         assertEquals(Session.STATUS_IN_PROGRESS, s.getStatus());
         assertEquals(Session.SYNC_PENDING, s.getSyncStatus());
         assertFalse(s.isDeleted());
-        assertEquals(Persona.BEGINNER.name(), s.getPersona());
+        assertNull(s.getUserId());
+    }
+
+    @Test
+    public void testSession_userIdStorage() {
+        Session s = new Session();
+        s.setUserId("user_abc123");
+        assertEquals("user_abc123", s.getUserId());
     }
 
     @Test

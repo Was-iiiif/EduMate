@@ -10,7 +10,6 @@ import androidx.lifecycle.MutableLiveData;
 import com.edumate.app.background.SyncWorker;
 import com.edumate.app.model.Evaluation;
 import com.edumate.app.model.Message;
-import com.edumate.app.model.Persona;
 import com.edumate.app.model.Session;
 import com.edumate.app.repository.AIRepository;
 import com.edumate.app.repository.SessionRepository;
@@ -43,7 +42,7 @@ public class SessionViewModel extends AndroidViewModel {
         this.aiRepository = AIRepository.getInstance(application);
     }
 
-    public void initSession(String topic, Persona persona, String existingSessionId) {
+    public void initSession(String topic, String existingSessionId) {
         if (isInitialized) return;
         isInitialized = true;
 
@@ -69,8 +68,7 @@ public class SessionViewModel extends AndroidViewModel {
         // Create fresh new session
         Session session = new Session();
         session.setTopic(topic);
-        session.setPersona(persona != null ? persona.name() : Persona.BEGINNER.name());
-        sessionRepository.insertSession(session, id -> {
+                sessionRepository.insertSession(session, id -> {
             sessionLiveData.setValue(session);
             // Trigger student opening question
             triggerStudentQuestion(session, new ArrayList<>());
@@ -103,14 +101,7 @@ public class SessionViewModel extends AndroidViewModel {
 
     private void triggerStudentQuestion(Session session, List<Message> history) {
         isLoading.setValue(true);
-        Persona p;
-        try {
-            p = Persona.valueOf(session.getPersona());
-        } catch (Exception e) {
-            p = Persona.BEGINNER;
-        }
-
-        aiRepository.generateStudentReply(session.getTopic(), p, history, new AIRepository.StudentReplyCallback() {
+        aiRepository.generateStudentReply(session.getTopic(), history, new AIRepository.StudentReplyCallback() {
             @Override
             public void onSuccess(String studentReply) {
                 onSuccessWithStatus(studentReply, false, null);

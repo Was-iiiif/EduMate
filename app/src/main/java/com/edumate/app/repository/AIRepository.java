@@ -14,7 +14,6 @@ import android.util.Log;
 import com.edumate.app.model.Evaluation;
 import com.edumate.app.model.Message;
 import com.edumate.app.model.Misconception;
-import com.edumate.app.model.Persona;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -409,7 +408,7 @@ public class AIRepository {
 
     // --- AI STUDENT CONVERSATION MODE ---
 
-    public void generateStudentReply(String topic, Persona persona, List<Message> history,
+    public void generateStudentReply(String topic, List<Message> history,
                                      StudentReplyCallback callback) {
         executors.networkIO().execute(() -> {
             String apiKey = getApiKey();
@@ -417,7 +416,7 @@ public class AIRepository {
 
             if (apiKey != null && !apiKey.isEmpty()) {
                 try {
-                    String reply = callGeminiForStudentReply(topic, persona, history, apiKey);
+                    String reply = callGeminiForStudentReply(topic, history, apiKey);
                     if (reply != null && !reply.trim().isEmpty()) {
                         postToMain(() -> callback.onSuccessWithStatus(reply.trim(), true, null));
                         return;
@@ -428,14 +427,14 @@ public class AIRepository {
                 }
             }
 
-            // Adaptive local simulation with persona directives and input comprehension
-            String fallbackReply = generateFallbackStudentReply(topic, persona, history);
+            // Adaptive local simulation with input comprehension
+            String fallbackReply = generateFallbackStudentReply(topic, history);
             final String finalError = geminiError;
             postToMain(() -> callback.onSuccessWithStatus(fallbackReply, false, finalError));
         });
     }
 
-    public String generateFallbackStudentReply(String topic, Persona persona, List<Message> history) {
+    public String generateFallbackStudentReply(String topic, List<Message> history) {
         int learnerTurns = 0;
         Message lastLearnerMessage = null;
 
@@ -448,17 +447,9 @@ public class AIRepository {
             }
         }
 
-        // Opening turn (no learner explanation yet)
+                // Opening turn (no learner explanation yet)
         if (learnerTurns == 0 || lastLearnerMessage == null) {
-            switch (persona) {
-                case SKEPTICAL_PEER:
-                    return "Hi! I heard you understand " + topic + ". Honestly, people often explain it too vaguely. Can you give me a crisp, unambiguous definition of what it actually is and why it exists?";
-                case EXAM_STYLE:
-                    return "Greetings. We are reviewing " + topic + " for the examination. Please define " + topic + " with exact terminology and state its primary fundamental principle.";
-                case BEGINNER:
-                default:
-                    return "Hi teacher! I'm really excited to learn about " + topic + ". Could you start from the very beginning and explain what it means in simple terms?";
-            }
+            return "Hi teacher! I'm really excited to learn about " + topic + ". Could you start from the very beginning and explain what it means in simple terms?";
         }
 
         String rawInput = lastLearnerMessage.getMessageText() != null
@@ -470,76 +461,30 @@ public class AIRepository {
         String currentConcept = checklist.get(conceptIndex);
         String nextConcept = checklist.get(Math.min(conceptIndex + 1, checklist.size() - 1));
 
-        // 1. DETECT UNCERTAINTY ("I DON'T KNOW", "IDK", "NO IDEA", "NOT SURE", ETC.)
+                // 1. DETECT UNCERTAINTY ("I DON'T KNOW", "IDK", "NO IDEA", "NOT SURE", ETC.)
         if (isUncertaintyOrIdk(rawInput)) {
             String hint = getConceptScaffolding(topic, conceptIndex);
-            switch (persona) {
-                case SKEPTICAL_PEER:
-                    return "Wait, you're the teacher here—don't give up on me with 'I don't know'! Let's think through it together: "
-                            + hint + " Now that we have that clue, what would your guess be on how " + currentConcept + " works?";
-                case EXAM_STYLE:
-                    return "Understood. Leaving this blank on an exam forfeits marks. Consider this core concept: "
-                            + hint + " Based on that principle, what is the primary function of " + currentConcept + "?";
-                case BEGINNER:
-                default:
-                    return "That's totally okay! Learning can be tough at first. Let me give you a helpful clue: "
-                            + hint + " Does that help spark an idea? What do you think happens next?";
-            }
+            return "That's totally okay! Learning can be tough at first. Let me give you a helpful clue: "
+                    + hint + " Does that help spark an idea? What do you think happens next?";
         }
 
-        // 2. DETECT VERY SHORT / TRIVIAL INPUTS (e.g. "yes", "no", "ok", "fine", single word)
+                // 2. DETECT VERY SHORT / TRIVIAL INPUTS (e.g. "yes", "no", "ok", "fine", single word)
         if (isVeryShortOrTrivial(rawInput)) {
-            switch (persona) {
-                case SKEPTICAL_PEER:
-                    return "Just '" + rawInput + "'? Come on, that doesn't prove anything! How would you convince someone that "
-                            + currentConcept + " actually works that way?";
-                case EXAM_STYLE:
-                    return "A brief response of '" + rawInput + "' is insufficient for full marks. Elaborate on the mechanism and principles behind "
-                            + currentConcept + ".";
-                case BEGINNER:
-                default:
-                    return "You mentioned '" + rawInput + "', but could you explain a little more about why? I'm trying to picture how "
-                            + currentConcept + " works!";
-            }
+            return "You mentioned '" + rawInput + "', but could you explain a little more about why? I'm trying to picture how "
+                    + currentConcept + " works!";
         }
 
-        // 3. MEANINGFUL EXPLANATION: EXTRACT PHRASE & ADAPTIVELY PROBE NEXT CONCEPT
+                // 3. MEANINGFUL EXPLANATION: EXTRACT PHRASE & ADAPTIVELY PROBE NEXT CONCEPT
         String snippet = extractKeyPhrase(rawInput);
-        switch (persona) {
-            case SKEPTICAL_PEER:
-                if (learnerTurns == 1) {
-                    return "Okay, so you're arguing that " + snippet + ". That sounds plausible, but how does the mechanism actually work? Specifically, how do you account for "
-                            + nextConcept + "?";
-                } else if (learnerTurns == 2) {
-                    return "I follow what you said about " + snippet + ", but isn't there an edge case here? How does "
-                            + nextConcept + " prevent errors or failure states?";
-                } else {
-                    return "Let me push back on your point that " + snippet + ": why is "
-                            + nextConcept + " essential rather than just an optional detail? What breaks if we don't have it?";
-                }
-            case EXAM_STYLE:
-                if (learnerTurns == 1) {
-                    return "Good. Your explanation that " + snippet + " addresses the baseline definition. Now describe the precise step-by-step mechanism involving "
-                            + nextConcept + ".";
-                } else if (learnerTurns == 2) {
-                    return "Understood regarding " + snippet + ". For full examination marks, explain the rationale behind "
-                            + nextConcept + ". Cite the causal relationship.";
-                } else {
-                    return "To conclude this review, how does your statement that " + snippet + " integrate with "
-                            + nextConcept + "? State any necessary preconditions.";
-                }
-            case BEGINNER:
-            default:
-                if (learnerTurns == 1) {
-                    return "Oh, that's really neat! So when you said that " + snippet + ", that helped me picture it. But what actually happens during "
-                            + nextConcept + "? Could you give me an everyday analogy?";
-                } else if (learnerTurns == 2) {
-                    return "I think I'm starting to get it! You mentioned " + snippet + ", which makes sense, but why is "
-                            + nextConcept + " necessary? What happens if that part is missing?";
-                } else {
-                    return "That helps so much! One last question to make sure I really understand: how does "
-                            + snippet + " connect back to " + nextConcept + " in the big picture?";
-                }
+        if (learnerTurns == 1) {
+            return "Oh, that's really neat! So when you said that " + snippet + ", that helped me picture it. But what actually happens during "
+                    + nextConcept + "? Could you give me an everyday analogy?";
+        } else if (learnerTurns == 2) {
+            return "I think I'm starting to get it! You mentioned " + snippet + ", which makes sense, but why is "
+                    + nextConcept + " necessary? What happens if that part is missing?";
+        } else {
+            return "That helps so much! One last question to make sure I really understand: how does "
+                    + snippet + " connect back to " + nextConcept + " in the big picture?";
         }
     }
 
@@ -745,24 +690,23 @@ public class AIRepository {
 
     // --- GEMINI REST API INTEGRATION ---
 
-    private String callGeminiForStudentReply(String topic, Persona persona, List<Message> history, String apiKey) throws Exception {
+    private String callGeminiForStudentReply(String topic, List<Message> history, String apiKey) throws Exception {
         JsonObject root = new JsonObject();
 
-        // 1. System Instruction persona
+        // 1. System Instruction
         JsonObject systemInstruction = new JsonObject();
         JsonArray sysArray = new JsonArray();
         JsonObject sysParts = new JsonObject();
-        String sysText = "You are an interactive AI student being taught about '" + topic + "' by a human teacher.\n"
-                + "Your persona: " + persona.getDisplayName() + ". " + persona.getSystemPromptDirective() + "\n\n"
+        String sysText = "You are an inquisitive, curious student being taught about '" + topic + "' by a human teacher using the Feynman Technique.\n\n"
                 + "CRITICAL RULES:\n"
                 + "1. You are the STUDENT, NOT the teacher. Do NOT lecture, summarize the topic, or explain the solution.\n"
                 + "2. Carefully read the teacher's latest message and react directly to what they said:\n"
-                + "   - If the teacher says 'I don't know', 'no idea', or asks for help, react in character (e.g. give a hint, offer a simple sub-question, or share an intuitive analogy).\n"
-                + "   - If the teacher explains a concept, acknowledge their explanation and ask a probing follow-up question to test depth, causality, or edge cases.\n"
+                + "   - If the teacher says 'I don't know', 'no idea', or asks for help, react encouragingly (give an intuitive clue, offer a simple sub-question, or share an intuitive everyday analogy).\n"
+                + "   - If the teacher explains a concept, acknowledge their explanation and ask a probing follow-up question to test depth, causality, or practical examples.\n"
                 + "   - If the teacher writes a vague or one-word answer, ask them to clarify or elaborate.\n"
                 + "3. Ask exactly ONE focused question per turn.\n"
                 + "4. Keep your response concise (1 to 3 sentences maximum).\n"
-                + "5. Stay in character.";
+                + "5. Stay in character as a curious learner.";
         sysParts.addProperty("text", sysText);
         sysArray.add(sysParts);
         systemInstruction.add("parts", sysArray);

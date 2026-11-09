@@ -6,19 +6,19 @@ import android.database.sqlite.SQLiteOpenHelper;
 
 public class EduMateDbHelper extends SQLiteOpenHelper {
     public static final String DATABASE_NAME = "edumate.db";
-    public static final int DATABASE_VERSION = 1;
+    public static final int DATABASE_VERSION = 3;
 
     // Table sessions
     public static final String TABLE_SESSIONS = "sessions";
     public static final String COL_SESSION_ID = "id";
     public static final String COL_SESSION_TOPIC = "topic";
-    public static final String COL_SESSION_PERSONA = "persona";
     public static final String COL_SESSION_STARTED_AT = "started_at";
     public static final String COL_SESSION_ENDED_AT = "ended_at";
     public static final String COL_SESSION_STATUS = "status";
     public static final String COL_SESSION_OVERALL_SCORE = "overall_score";
     public static final String COL_SESSION_SYNC_STATUS = "sync_status";
     public static final String COL_SESSION_DELETED_AT = "deleted_at";
+    public static final String COL_SESSION_USER_ID = "user_id";
 
     // Table messages
     public static final String TABLE_MESSAGES = "messages";
@@ -66,8 +66,8 @@ public class EduMateDbHelper extends SQLiteOpenHelper {
     public void onCreate(SQLiteDatabase db) {
         String createSessions = "CREATE TABLE " + TABLE_SESSIONS + " ("
                 + COL_SESSION_ID + " TEXT PRIMARY KEY, "
+                + COL_SESSION_USER_ID + " TEXT NOT NULL, "
                 + COL_SESSION_TOPIC + " TEXT NOT NULL, "
-                + COL_SESSION_PERSONA + " TEXT NOT NULL, "
                 + COL_SESSION_STARTED_AT + " INTEGER NOT NULL, "
                 + COL_SESSION_ENDED_AT + " INTEGER, "
                 + COL_SESSION_STATUS + " TEXT NOT NULL, "
@@ -110,10 +110,10 @@ public class EduMateDbHelper extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Upgrade migration strategy when schema increments
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_EVALUATIONS);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_MESSAGES);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_SESSIONS);
-        onCreate(db);
+        if (oldVersion < 3) {
+            try {
+                db.execSQL("ALTER TABLE " + TABLE_SESSIONS + " ADD COLUMN " + COL_SESSION_USER_ID + " TEXT DEFAULT ''");
+            } catch (Exception ignored) {}
+        }
     }
 }

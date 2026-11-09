@@ -1,6 +1,5 @@
 package com.edumate.app.adapter;
 
-import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
 
@@ -10,7 +9,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.edumate.app.R;
 import com.edumate.app.databinding.ItemHistorySessionBinding;
-import com.edumate.app.model.Persona;
 import com.edumate.app.model.Session;
 
 import java.text.SimpleDateFormat;
@@ -55,14 +53,6 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
 
         holder.binding.tvSessionTopic.setText(session.getTopic());
         holder.binding.tvSessionDate.setText(dateFormat.format(new Date(session.getStartedAt())));
-
-        // Persona name
-        String personaName = "Beginner";
-        try {
-            Persona p = Persona.valueOf(session.getPersona());
-            personaName = p.getDisplayName();
-        } catch (Exception ignored) {}
-        holder.binding.tvSessionPersona.setText(personaName);
 
         // Score display
         if (Session.STATUS_COMPLETED.equals(session.getStatus())) {

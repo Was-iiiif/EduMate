@@ -81,8 +81,9 @@ public class MainActivity extends AppCompatActivity {
                         .setTitle(R.string.dialog_delete_title)
                         .setMessage(R.string.dialog_delete_message)
                         .setPositiveButton(R.string.action_delete, (d, w) -> {
-                            // Soft delete via viewModel
-                            viewModel.loadHomeData();
+                            viewModel.softDeleteSession(session.getId(), () -> {
+                                Toast.makeText(MainActivity.this, R.string.session_deleted, Toast.LENGTH_SHORT).show();
+                            });
                         })
                         .setNegativeButton(R.string.action_cancel, null)
                         .show();

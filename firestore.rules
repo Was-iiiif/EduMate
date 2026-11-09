@@ -141,14 +141,12 @@ service cloud.firestore {
 
     // Validator for /users/{userId}/sessions/{sessionId} document
     function isValidSession(data, sessionId) {
-      return hasRequiredFields(data, ['topic', 'persona', 'createdAt', 'overallScore', 'turnCount']) &&
-        hasOnlyAllowedFields(data, ['topic', 'persona', 'createdAt', 'overallScore', 'turnCount', 'sessionId', 'id', 'status']) &&
+      return hasRequiredFields(data, ['topic', 'createdAt', 'overallScore', 'turnCount']) &&
+        hasOnlyAllowedFields(data, ['topic', 'persona', 'createdAt', 'overallScore', 'turnCount', 'sessionId', 'id', 'status', 'deletedAt']) &&
         data.topic is string &&
         data.topic.size() >= 1 &&
         data.topic.size() <= 200 &&
-        data.persona is string &&
-        data.persona.size() >= 1 &&
-        data.persona.size() <= 60 &&
+        (!('persona' in data) || (data.persona is string && data.persona.size() <= 60)) &&
         data.createdAt is timestamp &&
         isValidScore(data.overallScore) &&
         data.turnCount is int &&
@@ -156,7 +154,8 @@ service cloud.firestore {
         data.turnCount <= 1000 &&
         (!('sessionId' in data) || data.sessionId == sessionId) &&
         (!('id' in data) || data.id == sessionId) &&
-        (!('status' in data) || (data.status is string && data.status in ['IN_PROGRESS', 'COMPLETED', 'in_progress', 'completed']));
+        (!('status' in data) || (data.status is string && data.status in ['IN_PROGRESS', 'COMPLETED', 'DELETED', 'in_progress', 'completed', 'deleted'])) &&
+        (!('deletedAt' in data) || data.deletedAt is timestamp);
     }
 
     // Immutability check for sessions on update

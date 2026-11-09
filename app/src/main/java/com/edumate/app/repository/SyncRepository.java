@@ -119,7 +119,6 @@ public class SyncRepository {
             // edumate/users/{uid}/sessions/{sessionId}/
             JsonObject sessionObj = new JsonObject();
             sessionObj.addProperty("topic", session.getTopic());
-            sessionObj.addProperty("persona", session.getPersona());
             sessionObj.addProperty("startedAt", session.getStartedAt());
             sessionObj.addProperty("endedAt", session.getEndedAt());
             sessionObj.addProperty("status", session.getStatus());
@@ -218,7 +217,6 @@ public class SyncRepository {
                                 Session s = new Session();
                                 s.setId(sessionId);
                                 s.setTopic(sObj.get("topic").getAsString());
-                                s.setPersona(sObj.has("persona") ? sObj.get("persona").getAsString() : "BEGINNER");
                                 s.setStartedAt(sObj.get("startedAt").getAsLong());
                                 s.setEndedAt(sObj.has("endedAt") ? sObj.get("endedAt").getAsLong() : 0);
                                 s.setStatus(sObj.get("status").getAsString());

@@ -26,13 +26,6 @@
     <string name="topic_choose_preset">Choose a Topic to Teach</string>
     <string name="topic_custom_label">Or enter custom topic:</string>
     <string name="topic_custom_hint">e.g., Photosynthesis, Binary Search, Special Relativity</string>
-    <string name="persona_choose_label">Select Student Persona:</string>
-    <string name="persona_beginner">Curious Beginner</string>
-    <string name="persona_beginner_desc">Asks fundamental questions to build basic intuition.</string>
-    <string name="persona_skeptical">Skeptical Peer</string>
-    <string name="persona_skeptical_desc">Challenges edge cases, doubts vague claims, and demands examples.</string>
-    <string name="persona_exam">Exam Grader Style</string>
-    <string name="persona_exam_desc">Demands precise definitions, mechanisms, and formal terminology.</string>
     <string name="btn_begin_teaching">Begin Teaching</string>
     <string name="error_empty_topic">Please select or enter a topic to teach.</string>
 
@@ -77,6 +70,9 @@
     <string name="action_delete">Delete</string>
     <string name="action_cancel">Cancel</string>
     <string name="empty_history">No matching history found.</string>
+    <string name="session_deleted">Session removed from history.</string>
+    <string name="btn_sign_in_google">Sign in with Google</string>
+    <string name="btn_sign_up_google">Sign up with Google</string>
 
     <!-- Settings Screen -->
     <string name="settings_voice_header">Voice &amp; Audio</string>

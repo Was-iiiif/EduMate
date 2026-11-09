@@ -36,6 +36,14 @@ public class HistoryActivity extends AppCompatActivity {
         observeViewModel();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (viewModel != null) {
+            viewModel.loadSessions();
+        }
+    }
+
     private void setupRecyclerView() {
         adapter = new HistoryAdapter(new HistoryAdapter.OnSessionClickListener() {
             @Override

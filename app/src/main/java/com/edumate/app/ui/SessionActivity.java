@@ -17,7 +17,6 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import com.edumate.app.R;
 import com.edumate.app.adapter.ChatAdapter;
 import com.edumate.app.databinding.ActivitySessionBinding;
-import com.edumate.app.model.Persona;
 import com.edumate.app.viewmodel.SessionViewModel;
 import com.edumate.app.voice.VoiceController;
 
@@ -25,7 +24,6 @@ import java.util.Locale;
 
 public class SessionActivity extends AppCompatActivity {
     public static final String EXTRA_TOPIC = "extra_topic";
-    public static final String EXTRA_PERSONA = "extra_persona";
     public static final String EXTRA_SESSION_ID = "extra_session_id";
 
     private ActivitySessionBinding binding;
@@ -49,17 +47,9 @@ public class SessionActivity extends AppCompatActivity {
         observeViewModel();
 
         String topic = getIntent().getStringExtra(EXTRA_TOPIC);
-        String personaStr = getIntent().getStringExtra(EXTRA_PERSONA);
         String existingSessionId = getIntent().getStringExtra(EXTRA_SESSION_ID);
 
-        Persona persona = Persona.BEGINNER;
-        if (personaStr != null) {
-            try {
-                persona = Persona.valueOf(personaStr);
-            } catch (Exception ignored) {}
-        }
-
-        viewModel.initSession(topic != null ? topic : "General Topic", persona, existingSessionId);
+        viewModel.initSession(topic != null ? topic : "General Topic", existingSessionId);
     }
 
     private void readSettings() {

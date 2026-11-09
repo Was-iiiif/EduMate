@@ -39,7 +39,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:layout_marginBottom="28dp"
-                android:text="Teach to Learn with AI Personas"
+                android:text="Master Any Topic with AI Feynman Student"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 
@@ -196,6 +196,22 @@
                             android:background="@color/card_border" />
                     </LinearLayout>
 
+                    <!-- Google Sign In Button -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_google_sign_in"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp"
+                        android:layout_marginBottom="10dp"
+                        android:text="@string/btn_sign_in_google"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        app:icon="@drawable/ic_google"
+                        app:iconGravity="textStart"
+                        app:iconPadding="10dp"
+                        app:iconTint="@null"
+                        app:strokeColor="@color/card_border" />
+
                     <!-- Guest / Anonymous Login -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_guest_login"
@@ -203,7 +219,8 @@
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
                         android:text="Continue as Guest"
-                        android:textColor="@color/text_primary"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp"
                         app:strokeColor="@color/card_border" />
 
                 </LinearLayout>

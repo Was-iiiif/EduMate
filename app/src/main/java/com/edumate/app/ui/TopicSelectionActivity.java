@@ -8,7 +8,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.edumate.app.R;
 import com.edumate.app.databinding.ActivityTopicSelectionBinding;
-import com.edumate.app.model.Persona;
 import com.google.android.material.chip.Chip;
 
 public class TopicSelectionActivity extends AppCompatActivity {
@@ -42,11 +41,8 @@ public class TopicSelectionActivity extends AppCompatActivity {
                 return;
             }
 
-            Persona persona = getSelectedPersona();
-
             Intent intent = new Intent(TopicSelectionActivity.this, SessionActivity.class);
             intent.putExtra(SessionActivity.EXTRA_TOPIC, topic.trim());
-            intent.putExtra(SessionActivity.EXTRA_PERSONA, persona.name());
             startActivity(intent);
             finish();
         });
@@ -66,16 +62,5 @@ public class TopicSelectionActivity extends AppCompatActivity {
             }
         }
         return "";
-    }
-
-    private Persona getSelectedPersona() {
-        int checkedId = binding.rgPersonas.getCheckedRadioButtonId();
-        if (checkedId == R.id.rb_skeptical) {
-            return Persona.SKEPTICAL_PEER;
-        } else if (checkedId == R.id.rb_exam) {
-            return Persona.EXAM_STYLE;
-        } else {
-            return Persona.BEGINNER;
-        }
     }
 }

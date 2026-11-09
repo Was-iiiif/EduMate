@@ -114,9 +114,9 @@ public class FirestoreRepository {
 
         Map<String, Object> data = new HashMap<>();
         data.put("topic", session.getTopic() != null ? session.getTopic() : "Untitled Topic");
-        data.put("persona", session.getPersona() != null ? session.getPersona() : "BEGINNER");
         data.put("createdAt", new Timestamp(new Date(session.getStartedAt() > 0 ? session.getStartedAt() : System.currentTimeMillis())));
         data.put("overallScore", (double) session.getOverallScore());
+        data.put("turnCount", 5);
         data.put("sessionId", session.getId());
         data.put("status", session.getStatus() != null ? session.getStatus() : Session.STATUS_IN_PROGRESS);
 
@@ -128,6 +128,25 @@ public class FirestoreRepository {
                 })
                 .addOnFailureListener(e -> {
                     Log.e(TAG, "Failed to sync session to Firestore", e);
+                    if (callback != null) callback.onComplete(false, null, e.getMessage());
+                });
+    }
+
+    public void deleteSession(String sessionId, Callback<Void> callback) {
+        String uid = getCurrentUserId();
+        if (firestore == null || uid == null || sessionId == null) {
+            if (callback != null) callback.onComplete(false, null, "Not authenticated");
+            return;
+        }
+
+        firestore.collection("users").document(uid)
+                .collection("sessions").document(sessionId)
+                .delete()
+                .addOnSuccessListener(aVoid -> {
+                    if (callback != null) callback.onComplete(true, null, null);
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to delete session from Firestore", e);
                     if (callback != null) callback.onComplete(false, null, e.getMessage());
                 });
     }

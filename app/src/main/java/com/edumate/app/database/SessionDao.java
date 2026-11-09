@@ -36,8 +36,8 @@ public class SessionDao {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
         cv.put(EduMateDbHelper.COL_SESSION_ID, session.getId());
+        cv.put(EduMateDbHelper.COL_SESSION_USER_ID, session.getUserId() != null ? session.getUserId() : "");
         cv.put(EduMateDbHelper.COL_SESSION_TOPIC, session.getTopic());
-        cv.put(EduMateDbHelper.COL_SESSION_PERSONA, session.getPersona());
         cv.put(EduMateDbHelper.COL_SESSION_STARTED_AT, session.getStartedAt());
         cv.put(EduMateDbHelper.COL_SESSION_ENDED_AT, session.getEndedAt());
         cv.put(EduMateDbHelper.COL_SESSION_STATUS, session.getStatus());
@@ -56,8 +56,8 @@ public class SessionDao {
     public int updateSession(Session session) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
+        cv.put(EduMateDbHelper.COL_SESSION_USER_ID, session.getUserId() != null ? session.getUserId() : "");
         cv.put(EduMateDbHelper.COL_SESSION_TOPIC, session.getTopic());
-        cv.put(EduMateDbHelper.COL_SESSION_PERSONA, session.getPersona());
         cv.put(EduMateDbHelper.COL_SESSION_STARTED_AT, session.getStartedAt());
         cv.put(EduMateDbHelper.COL_SESSION_ENDED_AT, session.getEndedAt());
         cv.put(EduMateDbHelper.COL_SESSION_STATUS, session.getStatus());
@@ -121,13 +121,28 @@ public class SessionDao {
     }
 
     public List<Session> getAllActiveSessions() {
+        return getAllActiveSessions(null);
+    }
+
+    public List<Session> getAllActiveSessions(String userId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         List<Session> list = new ArrayList<>();
+        String selection;
+        String[] selectionArgs;
+
+        if (userId != null && !userId.isEmpty()) {
+            selection = EduMateDbHelper.COL_SESSION_USER_ID + " = ? AND " + EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL";
+            selectionArgs = new String[]{userId};
+        } else {
+            selection = EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL";
+            selectionArgs = null;
+        }
+
         Cursor cursor = db.query(
                 EduMateDbHelper.TABLE_SESSIONS,
                 null,
-                EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL",
-                null,
+                selection,
+                selectionArgs,
                 null, null,
                 EduMateDbHelper.COL_SESSION_STARTED_AT + " DESC"
         );
@@ -142,13 +157,28 @@ public class SessionDao {
     }
 
     public List<Session> getRecentActiveSessions(int limit) {
+        return getRecentActiveSessions(null, limit);
+    }
+
+    public List<Session> getRecentActiveSessions(String userId, int limit) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         List<Session> list = new ArrayList<>();
+        String selection;
+        String[] selectionArgs;
+
+        if (userId != null && !userId.isEmpty()) {
+            selection = EduMateDbHelper.COL_SESSION_USER_ID + " = ? AND " + EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL";
+            selectionArgs = new String[]{userId};
+        } else {
+            selection = EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL";
+            selectionArgs = null;
+        }
+
         Cursor cursor = db.query(
                 EduMateDbHelper.TABLE_SESSIONS,
                 null,
-                EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL",
-                null,
+                selection,
+                selectionArgs,
                 null, null,
                 EduMateDbHelper.COL_SESSION_STARTED_AT + " DESC",
                 String.valueOf(limit)
@@ -322,13 +352,23 @@ public class SessionDao {
     // --- STATISTICS & UTILS ---
 
     public int getCompletedCount() {
+        return getCompletedCount(null);
+    }
+
+    public int getCompletedCount(String userId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
-        Cursor cursor = db.rawQuery(
-                "SELECT COUNT(*) FROM " + EduMateDbHelper.TABLE_SESSIONS
-                        + " WHERE " + EduMateDbHelper.COL_SESSION_STATUS + " = ?"
-                        + " AND " + EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL",
-                new String[]{Session.STATUS_COMPLETED}
-        );
+        String query = "SELECT COUNT(*) FROM " + EduMateDbHelper.TABLE_SESSIONS
+                + " WHERE " + EduMateDbHelper.COL_SESSION_STATUS + " = ?"
+                + " AND " + EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL";
+        String[] args;
+        if (userId != null && !userId.isEmpty()) {
+            query += " AND " + EduMateDbHelper.COL_SESSION_USER_ID + " = ?";
+            args = new String[]{Session.STATUS_COMPLETED, userId};
+        } else {
+            args = new String[]{Session.STATUS_COMPLETED};
+        }
+
+        Cursor cursor = db.rawQuery(query, args);
         int count = 0;
         if (cursor != null) {
             if (cursor.moveToFirst()) {
@@ -340,14 +380,24 @@ public class SessionDao {
     }
 
     public double getAverageScore() {
+        return getAverageScore(null);
+    }
+
+    public double getAverageScore(String userId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
-        Cursor cursor = db.rawQuery(
-                "SELECT AVG(" + EduMateDbHelper.COL_SESSION_OVERALL_SCORE + ") FROM "
-                        + EduMateDbHelper.TABLE_SESSIONS
-                        + " WHERE " + EduMateDbHelper.COL_SESSION_STATUS + " = ?"
-                        + " AND " + EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL",
-                new String[]{Session.STATUS_COMPLETED}
-        );
+        String query = "SELECT AVG(" + EduMateDbHelper.COL_SESSION_OVERALL_SCORE + ") FROM "
+                + EduMateDbHelper.TABLE_SESSIONS
+                + " WHERE " + EduMateDbHelper.COL_SESSION_STATUS + " = ?"
+                + " AND " + EduMateDbHelper.COL_SESSION_DELETED_AT + " IS NULL";
+        String[] args;
+        if (userId != null && !userId.isEmpty()) {
+            query += " AND " + EduMateDbHelper.COL_SESSION_USER_ID + " = ?";
+            args = new String[]{Session.STATUS_COMPLETED, userId};
+        } else {
+            args = new String[]{Session.STATUS_COMPLETED};
+        }
+
+        Cursor cursor = db.rawQuery(query, args);
         double avg = 0.0;
         if (cursor != null) {
             if (cursor.moveToFirst()) {
@@ -387,7 +437,10 @@ public class SessionDao {
     private Session cursorToSession(Cursor cursor) {
         String id = cursor.getString(cursor.getColumnIndexOrThrow(EduMateDbHelper.COL_SESSION_ID));
         String topic = cursor.getString(cursor.getColumnIndexOrThrow(EduMateDbHelper.COL_SESSION_TOPIC));
-        String persona = cursor.getString(cursor.getColumnIndexOrThrow(EduMateDbHelper.COL_SESSION_PERSONA));
+
+        int userColIdx = cursor.getColumnIndex(EduMateDbHelper.COL_SESSION_USER_ID);
+        String userId = userColIdx != -1 && !cursor.isNull(userColIdx) ? cursor.getString(userColIdx) : "";
+
         long startedAt = cursor.getLong(cursor.getColumnIndexOrThrow(EduMateDbHelper.COL_SESSION_STARTED_AT));
         long endedAt = cursor.getLong(cursor.getColumnIndexOrThrow(EduMateDbHelper.COL_SESSION_ENDED_AT));
         String status = cursor.getString(cursor.getColumnIndexOrThrow(EduMateDbHelper.COL_SESSION_STATUS));
@@ -397,7 +450,7 @@ public class SessionDao {
         int delColIdx = cursor.getColumnIndexOrThrow(EduMateDbHelper.COL_SESSION_DELETED_AT);
         Long deletedAt = cursor.isNull(delColIdx) ? null : cursor.getLong(delColIdx);
 
-        return new Session(id, topic, persona, startedAt, endedAt, status, overallScore, syncStatus, deletedAt);
+        return new Session(id, userId, topic, startedAt, endedAt, status, overallScore, syncStatus, deletedAt);
     }
 
     private ContentValues evaluationToContentValues(Evaluation eval) {

@@ -5,8 +5,8 @@ import android.app.Application;
 import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MediatorLiveData;
 import androidx.lifecycle.MutableLiveData;
-import androidx.lifecycle.Transformations;
 
 import com.edumate.app.model.Session;
 import com.edumate.app.repository.SessionRepository;
@@ -22,34 +22,48 @@ public class HistoryViewModel extends AndroidViewModel {
     private final MutableLiveData<String> searchQuery = new MutableLiveData<>("");
     private final MutableLiveData<Boolean> isSyncing = new MutableLiveData<>(false);
     private final MutableLiveData<String> syncStatusMessage = new MutableLiveData<>();
-    private final LiveData<List<Session>> allSessions;
-    private final LiveData<List<Session>> filteredSessions;
+    private final MutableLiveData<List<Session>> allSessions = new MutableLiveData<>(new ArrayList<>());
+    private final MediatorLiveData<List<Session>> filteredSessions = new MediatorLiveData<>();
 
     public HistoryViewModel(@NonNull Application application) {
         super(application);
         this.sessionRepository = SessionRepository.getInstance(application);
         this.syncRepository = SyncRepository.getInstance(application);
 
-        this.allSessions = sessionRepository.getAllActiveSessions();
-        this.filteredSessions = Transformations.switchMap(searchQuery, query -> {
-            MutableLiveData<List<Session>> result = new MutableLiveData<>();
-            List<Session> fullList = allSessions.getValue();
-            if (fullList == null) {
-                result.setValue(new ArrayList<>());
-            } else if (query == null || query.trim().isEmpty()) {
-                result.setValue(fullList);
-            } else {
-                String qLower = query.toLowerCase().trim();
-                List<Session> filtered = new ArrayList<>();
-                for (Session s : fullList) {
-                    if (s.getTopic() != null && s.getTopic().toLowerCase().contains(qLower)) {
-                        filtered.add(s);
-                    }
-                }
-                result.setValue(filtered);
-            }
-            return result;
+        filteredSessions.addSource(allSessions, sessions -> applyFilter());
+        filteredSessions.addSource(searchQuery, query -> applyFilter());
+
+        loadSessions();
+    }
+
+    public void loadSessions() {
+        sessionRepository.getAllActiveSessions().observeForever(sessions -> {
+            allSessions.postValue(sessions != null ? sessions : new ArrayList<>());
         });
+    }
+
+    private void applyFilter() {
+        List<Session> fullList = allSessions.getValue();
+        String query = searchQuery.getValue();
+
+        if (fullList == null) {
+            filteredSessions.setValue(new ArrayList<>());
+            return;
+        }
+
+        if (query == null || query.trim().isEmpty()) {
+            filteredSessions.setValue(new ArrayList<>(fullList));
+            return;
+        }
+
+        String qLower = query.toLowerCase().trim();
+        List<Session> filtered = new ArrayList<>();
+        for (Session s : fullList) {
+            if (s.getTopic() != null && s.getTopic().toLowerCase().contains(qLower)) {
+                filtered.add(s);
+            }
+        }
+        filteredSessions.setValue(filtered);
     }
 
     public void setSearchQuery(String query) {
@@ -74,8 +88,7 @@ public class HistoryViewModel extends AndroidViewModel {
 
     public void softDeleteSession(String sessionId) {
         sessionRepository.softDeleteSession(sessionId, success -> {
-            // Refresh list
-            searchQuery.setValue(searchQuery.getValue());
+            loadSessions();
         });
     }
 
@@ -84,8 +97,7 @@ public class HistoryViewModel extends AndroidViewModel {
         syncRepository.syncPendingSessions((success, count, message) -> {
             isSyncing.postValue(false);
             syncStatusMessage.postValue(message);
-            // Refresh sessions
-            searchQuery.postValue(searchQuery.getValue());
+            loadSessions();
         });
     }
 }

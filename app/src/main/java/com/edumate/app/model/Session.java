@@ -11,8 +11,8 @@ public class Session implements Serializable {
     public static final String SYNC_SYNCED = "SYNCED";
 
     private String id;
+    private String userId;
     private String topic;
-    private String persona;
     private long startedAt;
     private long endedAt;
     private String status;
@@ -26,14 +26,13 @@ public class Session implements Serializable {
         this.status = STATUS_IN_PROGRESS;
         this.overallScore = 0.0;
         this.syncStatus = SYNC_PENDING;
-        this.persona = Persona.BEGINNER.name();
     }
 
-    public Session(String id, String topic, String persona, long startedAt, long endedAt,
+    public Session(String id, String userId, String topic, long startedAt, long endedAt,
                    String status, double overallScore, String syncStatus, Long deletedAt) {
         this.id = id;
+        this.userId = userId;
         this.topic = topic;
-        this.persona = persona;
         this.startedAt = startedAt;
         this.endedAt = endedAt;
         this.status = status;
@@ -42,79 +41,23 @@ public class Session implements Serializable {
         this.deletedAt = deletedAt;
     }
 
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public String getTopic() {
-        return topic;
-    }
-
-    public void setTopic(String topic) {
-        this.topic = topic;
-    }
-
-    public String getPersona() {
-        return persona != null ? persona : Persona.BEGINNER.name();
-    }
-
-    public void setPersona(String persona) {
-        this.persona = persona;
-    }
-
-    public long getStartedAt() {
-        return startedAt;
-    }
-
-    public void setStartedAt(long startedAt) {
-        this.startedAt = startedAt;
-    }
-
-    public long getEndedAt() {
-        return endedAt;
-    }
-
-    public void setEndedAt(long endedAt) {
-        this.endedAt = endedAt;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public double getOverallScore() {
-        return overallScore;
-    }
-
-    public void setOverallScore(double overallScore) {
-        this.overallScore = overallScore;
-    }
-
-    public String getSyncStatus() {
-        return syncStatus;
-    }
-
-    public void setSyncStatus(String syncStatus) {
-        this.syncStatus = syncStatus;
-    }
-
-    public Long getDeletedAt() {
-        return deletedAt;
-    }
-
-    public void setDeletedAt(Long deletedAt) {
-        this.deletedAt = deletedAt;
-    }
-
-    public boolean isDeleted() {
-        return deletedAt != null && deletedAt > 0;
-    }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
+    public String getTopic() { return topic; }
+    public void setTopic(String topic) { this.topic = topic; }
+    public long getStartedAt() { return startedAt; }
+    public void setStartedAt(long startedAt) { this.startedAt = startedAt; }
+    public long getEndedAt() { return endedAt; }
+    public void setEndedAt(long endedAt) { this.endedAt = endedAt; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public double getOverallScore() { return overallScore; }
+    public void setOverallScore(double overallScore) { this.overallScore = overallScore; }
+    public String getSyncStatus() { return syncStatus; }
+    public void setSyncStatus(String syncStatus) { this.syncStatus = syncStatus; }
+    public Long getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(Long deletedAt) { this.deletedAt = deletedAt; }
+    public boolean isDeleted() { return deletedAt != null && deletedAt > 0; }
 }

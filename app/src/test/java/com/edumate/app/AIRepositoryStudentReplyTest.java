@@ -6,7 +6,6 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import com.edumate.app.model.Message;
-import com.edumate.app.model.Persona;
 import com.edumate.app.repository.AIRepository;
 
 import org.junit.Before;
@@ -26,7 +25,7 @@ public class AIRepositoryStudentReplyTest {
     @Test
     public void testOpeningTurn_generatesIntroductionQuestion() {
         List<Message> history = new ArrayList<>();
-        String reply = aiRepository.generateFallbackStudentReply("Photosynthesis", Persona.BEGINNER, history);
+        String reply = aiRepository.generateFallbackStudentReply("Photosynthesis", history);
         assertNotNull(reply);
         assertTrue(reply.contains("Photosynthesis"));
         assertTrue(reply.contains("simple terms") || reply.contains("explain"));
@@ -38,27 +37,16 @@ public class AIRepositoryStudentReplyTest {
         history.add(new Message("s1", Message.SENDER_STUDENT, "What does photosynthesis mean in simple terms?"));
         history.add(new Message("s1", Message.SENDER_LEARNER, "I DON'T KNOW"));
 
-        // Beginner Persona
-        String beginnerReply = aiRepository.generateFallbackStudentReply("Photosynthesis", Persona.BEGINNER, history);
-        assertNotNull(beginnerReply);
+        String reply = aiRepository.generateFallbackStudentReply("Photosynthesis", history);
+        assertNotNull(reply);
         // Must NOT return the old canned generic switch string
-        assertFalse(beginnerReply.contains("Oh, that's interesting! But I got a bit confused about how it works inside"));
+        assertFalse(reply.contains("Oh, that's interesting! But I got a bit confused about how it works inside"));
         // Must give scaffolding/clue
-        assertTrue(beginnerReply.toLowerCase().contains("clue")
-                || beginnerReply.toLowerCase().contains("hint")
-                || beginnerReply.toLowerCase().contains("leaf")
-                || beginnerReply.toLowerCase().contains("kitchen")
-                || beginnerReply.toLowerCase().contains("chloroplast"));
-
-        // Skeptical Peer Persona
-        String skepticalReply = aiRepository.generateFallbackStudentReply("Photosynthesis", Persona.SKEPTICAL_PEER, history);
-        assertNotNull(skepticalReply);
-        assertTrue(skepticalReply.contains("teacher") || skepticalReply.contains("guess") || skepticalReply.contains("clue"));
-
-        // Exam Style Persona
-        String examReply = aiRepository.generateFallbackStudentReply("Photosynthesis", Persona.EXAM_STYLE, history);
-        assertNotNull(examReply);
-        assertTrue(examReply.contains("exam") || examReply.contains("marks") || examReply.contains("principle"));
+        assertTrue(reply.toLowerCase().contains("clue")
+                || reply.toLowerCase().contains("hint")
+                || reply.toLowerCase().contains("leaf")
+                || reply.toLowerCase().contains("kitchen")
+                || reply.toLowerCase().contains("chloroplast"));
     }
 
     @Test
@@ -67,7 +55,7 @@ public class AIRepositoryStudentReplyTest {
         history.add(new Message("s1", Message.SENDER_STUDENT, "Define Quicksort."));
         history.add(new Message("s1", Message.SENDER_LEARNER, "no idea"));
 
-        String reply = aiRepository.generateFallbackStudentReply("Quicksort", Persona.BEGINNER, history);
+        String reply = aiRepository.generateFallbackStudentReply("Quicksort", history);
         assertNotNull(reply);
         assertTrue(reply.toLowerCase().contains("clue") || reply.toLowerCase().contains("pivot") || reply.toLowerCase().contains("benchmark"));
     }
@@ -78,7 +66,7 @@ public class AIRepositoryStudentReplyTest {
         history.add(new Message("s1", Message.SENDER_STUDENT, "Could you start from the very beginning and explain what Photosynthesis means in simple terms?"));
         history.add(new Message("s1", Message.SENDER_LEARNER, "Plants use solar energy from the sun to synthesize glucose and chemical energy"));
 
-        String reply = aiRepository.generateFallbackStudentReply("Photosynthesis", Persona.BEGINNER, history);
+        String reply = aiRepository.generateFallbackStudentReply("Photosynthesis", history);
         assertNotNull(reply);
         // Should quote or acknowledge user's phrase
         assertTrue(reply.contains("Plants use solar energy") || reply.contains("glucose") || reply.contains("synthesize"));
@@ -92,10 +80,10 @@ public class AIRepositoryStudentReplyTest {
         history.add(new Message("s1", Message.SENDER_STUDENT, "How does the pivot work?"));
         history.add(new Message("s1", Message.SENDER_LEARNER, "yes"));
 
-        String reply = aiRepository.generateFallbackStudentReply("Quicksort", Persona.SKEPTICAL_PEER, history);
+        String reply = aiRepository.generateFallbackStudentReply("Quicksort", history);
         assertNotNull(reply);
-        assertTrue(reply.contains("'yes'") || reply.contains("Just 'yes'"));
-        assertTrue(reply.contains("explain") || reply.contains("convince") || reply.contains("works"));
+        assertTrue(reply.contains("'yes'"));
+        assertTrue(reply.contains("explain") || reply.contains("picture") || reply.contains("why"));
     }
 
     @Test
