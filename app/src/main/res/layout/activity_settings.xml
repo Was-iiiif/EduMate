@@ -12,16 +12,13 @@
         app:elevation="1dp">
 
         <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize">
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
-
                 <ImageButton
                     android:id="@+id/btn_back"
                     android:layout_width="40dp"
@@ -29,7 +26,6 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Back"
                     android:src="@drawable/ic_arrow_back" />
-
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -47,170 +43,193 @@
         android:layout_height="match_parent"
         android:fillViewport="true"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Voice & Audio Settings -->
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:text="@string/settings_voice_header"
-                android:textColor="@color/primary"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
+                android:layout_marginBottom="22dp"
                 app:cardBackgroundColor="@color/surface"
-                app:cardCornerRadius="14dp"
+                app:cardCornerRadius="18dp"
                 app:cardElevation="1dp"
                 app:strokeColor="@color/card_border"
                 app:strokeWidth="1dp">
-
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switch_tts_auto"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:checked="true"
-                        android:text="@string/setting_tts_auto_play"
-                        android:textColor="@color/text_primary"
-                        android:textSize="15sp" />
-
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="18dp">
                     <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/setting_tts_auto_play_summary"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Data & Privacy Settings -->
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:text="@string/settings_data_header"
-                android:textColor="@color/primary"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
-                app:cardBackgroundColor="@color/surface"
-                app:cardCornerRadius="14dp"
-                app:cardElevation="1dp"
-                app:strokeColor="@color/card_border"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Signed in as"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tv_user_id"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="14dp"
-                        android:text="—"
-                        android:textColor="@color/text_primary"
-                        android:textSize="14sp"
+                        android:layout_width="54dp"
+                        android:layout_height="54dp"
+                        android:background="@drawable/bg_avatar_circle"
+                        android:gravity="center"
+                        android:text="E"
+                        android:textColor="@color/on_primary"
+                        android:textSize="24sp"
                         android:textStyle="bold" />
-
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_sign_out"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView
+                            android:id="@+id/tv_profile_name"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Sign Out" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_clear_data"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="wrap_content"
+                            android:text="EduMate learner"
+                            android:textColor="@color/text_primary"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:id="@+id/tv_profile_email"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:text="@string/setting_clear_data"
-                            android:textColor="@color/score_poor"
-                            app:strokeColor="@color/score_poor" />
+                            android:layout_marginTop="3dp"
+                            android:text="Account information"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp" />
+                        <TextView
+                            android:id="@+id/tv_account_type"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="5dp"
+                            android:text="Account status"
+                            android:textColor="@color/primary"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Privacy Notice Card -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
-                app:cardBackgroundColor="@color/surface_variant"
-                app:cardCornerRadius="14dp"
-                app:cardElevation="0dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/privacy_notice_title"
-                        android:textColor="@color/text_primary"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-
-                    <TextView
+            <TextView style="@style/SettingsSectionTitle" android:text="LEARNING PREFERENCES" />
+            <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+                <LinearLayout style="@style/SettingsCardContent">
+                    <TextView style="@style/SettingsLabel" android:text="Learning level" />
+                    <Spinner android:id="@+id/spinner_learning_level" style="@style/SettingsSpinner" />
+                    <TextView style="@style/SettingsLabel" android:text="Explanation style" />
+                    <Spinner android:id="@+id/spinner_explanation_style" style="@style/SettingsSpinner" />
+                    <TextView style="@style/SettingsLabel" android:text="Preferred language" />
+                    <Spinner android:id="@+id/spinner_language" style="@style/SettingsSpinner" />
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switch_follow_up"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:lineSpacingExtra="2dp"
-                        android:text="@string/privacy_notice_content"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:layout_marginTop="12dp"
+                        android:text="Ask follow-up questions"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
+                    <TextView style="@style/SettingsSummary"
+                        android:text="These preferences are saved on this device. They can be connected to AI prompts in a later integration step." />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- About Section -->
+            <TextView style="@style/SettingsSectionTitle" android:text="APPEARANCE" />
+            <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+                <LinearLayout style="@style/SettingsCardContent">
+                    <TextView style="@style/SettingsLabel" android:text="App theme" />
+                    <Spinner android:id="@+id/spinner_theme" style="@style/SettingsSpinner" />
+                    <TextView style="@style/SettingsSummary" android:text="Choose light, dark, or follow your device setting." />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView style="@style/SettingsSectionTitle" android:text="VOICE &amp; AUDIO" />
+            <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+                <LinearLayout style="@style/SettingsCardContent">
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switch_tts_auto"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/setting_tts_auto_play"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
+                    <TextView style="@style/SettingsSummary" android:text="@string/setting_tts_auto_play_summary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView style="@style/SettingsSectionTitle" android:text="AI &amp; PRIVACY" />
+            <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+                <LinearLayout style="@style/SettingsCardContent">
+                    <TextView
+                        android:id="@+id/row_ai_service"
+                        style="@style/SettingsActionRow"
+                        android:text="AI service  ·  Gemini via secure proxy"
+                        android:drawableEnd="@drawable/ic_chevron_right"
+                        android:drawablePadding="8dp" />
+                    <View style="@style/SettingsDivider" />
+                    <TextView
+                        android:id="@+id/row_privacy"
+                        style="@style/SettingsActionRow"
+                        android:text="Privacy &amp; learning data"
+                        android:drawableEnd="@drawable/ic_chevron_right"
+                        android:drawablePadding="8dp" />
+                    <View style="@style/SettingsDivider" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_clear_data"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/setting_clear_data"
+                        android:textColor="@color/score_poor"
+                        app:strokeColor="@color/score_poor" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView style="@style/SettingsSectionTitle" android:text="HELP &amp; ABOUT" />
+            <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+                <LinearLayout style="@style/SettingsCardContent">
+                    <TextView
+                        android:id="@+id/row_help"
+                        style="@style/SettingsActionRow"
+                        android:text="Help &amp; how to use EduMate"
+                        android:drawableEnd="@drawable/ic_chevron_right"
+                        android:drawablePadding="8dp" />
+                    <View style="@style/SettingsDivider" />
+                    <TextView
+                        android:id="@+id/row_feedback"
+                        style="@style/SettingsActionRow"
+                        android:text="Send feedback / report a bug"
+                        android:drawableEnd="@drawable/ic_chevron_right"
+                        android:drawablePadding="8dp" />
+                    <View style="@style/SettingsDivider" />
+                    <TextView
+                        android:id="@+id/row_about"
+                        style="@style/SettingsActionRow"
+                        android:text="About EduMate"
+                        android:drawableEnd="@drawable/ic_chevron_right"
+                        android:drawablePadding="8dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView style="@style/SettingsSectionTitle" android:text="ACCOUNT" />
+            <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+                <LinearLayout style="@style/SettingsCardContent">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_sign_out"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Sign out" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <TextView
+                android:id="@+id/tv_version"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="20dp"
                 android:gravity="center"
-                android:text="@string/settings_version"
+                android:text="Version"
                 android:textColor="@color/text_hint"
                 android:textSize="12sp" />
-
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
