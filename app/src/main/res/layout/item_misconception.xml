@@ -5,10 +5,10 @@
     android:layout_height="wrap_content"
     android:layout_marginTop="4dp"
     android:layout_marginBottom="4dp"
-    app:cardBackgroundColor="#FEF2F2"
+    app:cardBackgroundColor="@color/misconception_background"
     app:cardCornerRadius="10dp"
     app:cardElevation="0dp"
-    app:strokeColor="#FECACA"
+    app:strokeColor="@color/misconception_border"
     app:strokeWidth="1dp">
 
     <LinearLayout

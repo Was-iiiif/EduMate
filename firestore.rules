@@ -133,7 +133,7 @@ service cloud.firestore {
 
     // Immutability check for /users/{userId} on update
     function isImmutableUserFieldsUnchanged() {
-      return request.resource.data.createdAt == resource.data.createdAt &&
+      return (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
         (!('userId' in resource.data) || !('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId) &&
         (!('uid' in resource.data) || !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid) &&
         (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id);
@@ -142,7 +142,7 @@ service cloud.firestore {
     // Validator for /users/{userId}/sessions/{sessionId} document
     function isValidSession(data, sessionId) {
       return hasRequiredFields(data, ['topic', 'createdAt', 'overallScore', 'turnCount']) &&
-        hasOnlyAllowedFields(data, ['topic', 'persona', 'createdAt', 'overallScore', 'turnCount', 'sessionId', 'id', 'status', 'deletedAt']) &&
+        hasOnlyAllowedFields(data, ['topic', 'persona', 'createdAt', 'overallScore', 'turnCount', 'sessionId', 'id', 'status', 'deletedAt', 'endedAt']) &&
         data.topic is string &&
         data.topic.size() >= 1 &&
         data.topic.size() <= 200 &&
@@ -155,7 +155,8 @@ service cloud.firestore {
         (!('sessionId' in data) || data.sessionId == sessionId) &&
         (!('id' in data) || data.id == sessionId) &&
         (!('status' in data) || (data.status is string && data.status in ['IN_PROGRESS', 'COMPLETED', 'DELETED', 'in_progress', 'completed', 'deleted'])) &&
-        (!('deletedAt' in data) || data.deletedAt is timestamp);
+        (!('deletedAt' in data) || data.deletedAt is timestamp) &&
+        (!('endedAt' in data) || data.endedAt is timestamp);
     }
 
     // Immutability check for sessions on update
@@ -215,8 +216,7 @@ service cloud.firestore {
 
     // Immutability check for evaluation on update
     function isImmutableEvaluationFieldsUnchanged() {
-      return (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
-        (!('sessionId' in resource.data) || !('sessionId' in request.resource.data) || request.resource.data.sessionId == resource.data.sessionId) &&
+      return (!('sessionId' in resource.data) || !('sessionId' in request.resource.data) || request.resource.data.sessionId == resource.data.sessionId) &&
         (!('evalId' in resource.data) || !('evalId' in request.resource.data) || request.resource.data.evalId == resource.data.evalId);
     }
 

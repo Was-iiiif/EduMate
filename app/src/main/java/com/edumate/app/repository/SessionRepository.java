@@ -66,8 +66,14 @@ public class SessionRepository {
             try {
                 long rowId = sessionDao.insertSession(session);
                 try {
-                    FirestoreRepository.getInstance().syncSession(session, null);
-                } catch (Throwable ignored) {}
+                    FirestoreRepository.getInstance().syncSession(session, new FirestoreRepository.Callback<Void>() {
+                        @Override public void onComplete(boolean ok, Void result, String error) {
+                            if (!ok) android.util.Log.e("SessionRepository", "Cloud session save failed; it will be retried: " + error);
+                        }
+                    });
+                } catch (Throwable cloudError) {
+                    android.util.Log.e("SessionRepository", "Could not start Firestore session save", cloudError);
+                }
                 if (callback != null) {
                     executors.mainThread().execute(() -> callback.onResult(rowId));
                 }
@@ -87,8 +93,14 @@ public class SessionRepository {
         executors.diskIO().execute(() -> {
             int updated = sessionDao.updateSession(session);
             try {
-                FirestoreRepository.getInstance().syncSession(session, null);
-            } catch (Throwable ignored) {}
+                FirestoreRepository.getInstance().syncSession(session, new FirestoreRepository.Callback<Void>() {
+                    @Override public void onComplete(boolean ok, Void result, String error) {
+                        if (!ok) android.util.Log.e("SessionRepository", "Cloud session update failed; retry queued: " + error);
+                    }
+                });
+            } catch (Throwable cloudError) {
+                android.util.Log.e("SessionRepository", "Could not start Firestore session update", cloudError);
+            }
             if (callback != null) {
                 executors.mainThread().execute(() -> callback.onResult(updated));
             }
@@ -99,8 +111,14 @@ public class SessionRepository {
         executors.diskIO().execute(() -> {
             int count = sessionDao.softDeleteSession(sessionId);
             try {
-                FirestoreRepository.getInstance().deleteSession(sessionId, null);
-            } catch (Throwable ignored) {}
+                FirestoreRepository.getInstance().deleteSession(sessionId, new FirestoreRepository.Callback<Void>() {
+                    @Override public void onComplete(boolean ok, Void result, String error) {
+                        if (!ok) android.util.Log.e("SessionRepository", "Cloud session delete failed: " + error);
+                    }
+                });
+            } catch (Throwable cloudError) {
+                android.util.Log.e("SessionRepository", "Could not start Firestore delete", cloudError);
+            }
             if (callback != null) {
                 executors.mainThread().execute(() -> callback.onResult(count > 0));
             }
@@ -145,8 +163,17 @@ public class SessionRepository {
             try {
                 long id = sessionDao.insertMessage(message);
                 try {
-                    FirestoreRepository.getInstance().syncMessage(message.getSessionId(), message, 1, null);
-                } catch (Throwable ignored) {}
+                    List<Message> savedMessages = sessionDao.getMessagesForSession(message.getSessionId());
+                    int turnNumber = 0;
+                    for (Message saved : savedMessages) if (saved.isFromLearner()) turnNumber++;
+                    FirestoreRepository.getInstance().syncMessage(message.getSessionId(), message, Math.max(0, turnNumber), new FirestoreRepository.Callback<Void>() {
+                        @Override public void onComplete(boolean ok, Void result, String error) {
+                            if (!ok) android.util.Log.e("SessionRepository", "Cloud message save failed; it will be retried: " + error);
+                        }
+                    });
+                } catch (Throwable cloudError) {
+                    android.util.Log.e("SessionRepository", "Could not start Firestore message save", cloudError);
+                }
                 if (callback != null) {
                     executors.mainThread().execute(() -> callback.onResult(id));
                 }
@@ -181,10 +208,20 @@ public class SessionRepository {
         }
         executors.diskIO().execute(() -> {
             boolean success = sessionDao.completeSessionWithEvaluation(session, eval);
-            try {
-                FirestoreRepository.getInstance().syncSession(session, null);
-                FirestoreRepository.getInstance().syncEvaluation(session.getId(), eval, null);
-            } catch (Throwable ignored) {}
+            if (success) try {
+                FirestoreRepository.getInstance().syncSession(session, new FirestoreRepository.Callback<Void>() {
+                    @Override public void onComplete(boolean ok, Void result, String error) {
+                        if (!ok) android.util.Log.e("SessionRepository", "Cloud completed-session save failed: " + error);
+                    }
+                });
+                FirestoreRepository.getInstance().syncEvaluation(session.getId(), eval, new FirestoreRepository.Callback<Void>() {
+                    @Override public void onComplete(boolean ok, Void result, String error) {
+                        if (!ok) android.util.Log.e("SessionRepository", "Cloud evaluation save failed; it will be retried: " + error);
+                    }
+                });
+            } catch (Throwable cloudError) {
+                android.util.Log.e("SessionRepository", "Could not start Firestore evaluation save", cloudError);
+            }
             if (callback != null) {
                 executors.mainThread().execute(() -> callback.onResult(success));
             }

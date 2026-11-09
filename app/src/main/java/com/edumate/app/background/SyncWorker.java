@@ -36,7 +36,7 @@ public class SyncWorker extends Worker {
         });
 
         try {
-            boolean done = latch.await(30, TimeUnit.SECONDS);
+            boolean done = latch.await(2, TimeUnit.MINUTES);
             if (done && successFlag.get()) {
                 return Result.success();
             } else {

@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.edumate.app.R;
 import com.edumate.app.adapter.HistoryAdapter;
+import com.edumate.app.background.SyncWorker;
 import com.edumate.app.databinding.ActivityMainBinding;
 import com.edumate.app.model.Session;
 import com.edumate.app.viewmodel.HomeViewModel;
@@ -57,6 +58,8 @@ public class MainActivity extends AppCompatActivity {
             }
         } catch (Throwable ignored) {}
         viewModel.loadHomeData();
+        // Retry any locally stored sessions/messages/evaluations in the background on app return.
+        SyncWorker.enqueueSyncWork(getApplicationContext());
     }
 
     private void setupRecyclerView() {

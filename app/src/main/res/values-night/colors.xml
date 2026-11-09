@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#8AB4FF</color>
+    <color name="primary_dark">#6698F5</color>
+    <color name="primary_light">#243B63</color>
+    <color name="primary_variant">#A9C7FF</color>
+    <color name="on_primary">#10213D</color>
+
+    <color name="secondary">#5EEAD4</color>
+    <color name="secondary_light">#153F3B</color>
+    <color name="on_secondary">#062E2A</color>
+
+    <color name="background">#0B1220</color>
+    <color name="surface">#121C2B</color>
+    <color name="surface_variant">#1B293B</color>
+    <color name="card_border">#2B3A4F</color>
+
+    <color name="text_primary">#E5EDF8</color>
+    <color name="text_secondary">#A7B5C8</color>
+    <color name="text_hint">#8292A8</color>
+
+    <color name="chat_learner">#315FAD</color>
+    <color name="chat_learner_text">#FFFFFF</color>
+    <color name="chat_student">#1B293B</color>
+    <color name="chat_student_text">#E5EDF8</color>
+    <color name="chat_student_border">#34465D</color>
+
+    <color name="score_excellent">#4ADE80</color>
+    <color name="score_good">#38BDF8</color>
+    <color name="score_average">#FBBF24</color>
+    <color name="score_poor">#F87171</color>
+
+    <color name="badge_synced">#4ADE80</color>
+    <color name="badge_pending">#FB923C</color>
+    <color name="divider">#2B3A4F</color>
+
+    <color name="session_background">#111E30</color>
+    <color name="misconception_background">#3A2028</color>
+    <color name="misconception_border">#713642</color>
+    <color name="soft_on_primary">#D7E5FF</color>
+</resources>

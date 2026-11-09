@@ -1,4 +1,3 @@
-
 package com.edumate.app.ui;
 
 import android.content.Context;
@@ -50,7 +49,6 @@ public class SettingsActivity extends AppCompatActivity {
 
         setupSpinners();
         loadPreferences();
-        applyTheme(preferences.getString(KEY_THEME, "System default"));
         loadAccountDetails();
         loadAppVersion();
         setupClickListeners();

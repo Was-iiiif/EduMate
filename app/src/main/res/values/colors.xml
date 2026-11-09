@@ -33,4 +33,8 @@
     <color name="badge_synced">#16A34A</color>
     <color name="badge_pending">#EA580C</color>
     <color name="divider">#E2E8F0</color>
+    <color name="session_background">#EFF6FF</color>
+    <color name="misconception_background">#FEF2F2</color>
+    <color name="misconception_border">#FECACA</color>
+    <color name="soft_on_primary">#E0E7FF</color>
 </resources>

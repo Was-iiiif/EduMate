@@ -168,7 +168,7 @@ public class LoginActivity extends AppCompatActivity {
                     if (task.isSuccessful()) {
                         FirebaseUser user = auth.getCurrentUser();
                         if (user != null) {
-                            firestoreRepository.saveUserProfile(user, null);
+                            saveProfileAndStartSync(user);
                         }
                         Toast.makeText(LoginActivity.this, "Signed in with Google successfully!", Toast.LENGTH_SHORT).show();
                         navigateToMain();
@@ -201,7 +201,7 @@ public class LoginActivity extends AppCompatActivity {
                     if (task.isSuccessful()) {
                         FirebaseUser user = auth.getCurrentUser();
                         if (user != null) {
-                            firestoreRepository.saveUserProfile(user, null);
+                            saveProfileAndStartSync(user);
                         }
                         Toast.makeText(LoginActivity.this, "Welcome back!", Toast.LENGTH_SHORT).show();
                         navigateToMain();
@@ -246,7 +246,7 @@ public class LoginActivity extends AppCompatActivity {
                                     .build();
                             user.updateProfile(update).addOnCompleteListener(profileTask -> {
                                 setLoading(false);
-                                firestoreRepository.saveUserProfile(user, null);
+                                saveProfileAndStartSync(user);
                                 Toast.makeText(LoginActivity.this, "Account created successfully!", Toast.LENGTH_SHORT).show();
                                 navigateToMain();
                             });
@@ -277,7 +277,7 @@ public class LoginActivity extends AppCompatActivity {
                     if (task.isSuccessful()) {
                         FirebaseUser user = auth.getCurrentUser();
                         if (user != null) {
-                            firestoreRepository.saveUserProfile(user, null);
+                            saveProfileAndStartSync(user);
                         }
                         Toast.makeText(LoginActivity.this, "Signed in as Guest", Toast.LENGTH_SHORT).show();
                         navigateToMain();
@@ -286,6 +286,25 @@ public class LoginActivity extends AppCompatActivity {
                         showError(msg);
                     }
                 });
+    }
+
+
+    /** Save the required Firestore owner document, then retry this account's local backup. */
+    private void saveProfileAndStartSync(FirebaseUser user) {
+        firestoreRepository.saveUserProfile(user, (success, result, error) -> {
+            if (!success) {
+                android.util.Log.e("LoginActivity", "Firestore profile setup failed: " + error);
+                runOnUiThread(() -> Toast.makeText(LoginActivity.this,
+                        "Signed in, but cloud profile setup failed: " + error,
+                        Toast.LENGTH_LONG).show());
+                return;
+            }
+            com.edumate.app.repository.SyncRepository.getInstance(getApplicationContext())
+                    .syncPendingSessions((synced, count, message) -> {
+                        if (!synced) android.util.Log.e("LoginActivity", message);
+                        else android.util.Log.i("LoginActivity", message);
+                    });
+        });
     }
 
     private boolean validateEmail(String email) {

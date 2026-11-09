@@ -94,7 +94,7 @@
                         android:layout_marginBottom="18dp"
                         android:lineSpacingExtra="3dp"
                         android:text="@string/home_welcome_subtitle"
-                        android:textColor="#E0E7FF"
+                        android:textColor="@color/soft_on_primary"
                         android:textSize="14sp" />
 
                     <com.google.android.material.button.MaterialButton

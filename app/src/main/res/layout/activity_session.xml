@@ -114,7 +114,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_alignParentTop="true"
-            android:background="#EFF6FF"
+            android:background="@color/session_background"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="16dp"
