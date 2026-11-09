@@ -1,5 +1,8 @@
 package com.edumate.app.repository;
 
+import com.google.android.gms.tasks.Tasks;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
@@ -33,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 public class AIRepository {
     private static final String TAG = "AIRepository";
@@ -41,27 +45,35 @@ public class AIRepository {
     private final AppExecutors executors;
     private final Gson gson;
     private final Handler mainHandler;
+    private static final String AI_PROXY_URL =
+            "https://edumate-gemini-proxy.wasifrahman121.workers.dev/generate";
+
+    // Ordered fallback list.
+    private static final String[] AI_MODELS = {
+            "gemini-3.8-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash"
+    };
 
     public static final String PREFS_NAME = "edumate_ai_prefs";
     public static final String KEY_GEMINI_API_KEY = "gemini_api_key";
 
-    private static final String[] GEMINI_MODELS = new String[] {
-            "gemini-3.8-flash",        // primary (newest, but most in demand)
-            "gemini-3.7-flash",        // older generation, usually less loaded
-            "gemini-3.5-flash-lite",   // lite = most spare capacity
-            "gemini-2.5-flash"         // stable fallback, long-lived
-    };
-
-    private static boolean shouldRetryWithNextModel(int respCode) {
-        return respCode == 404 || respCode == 503 || respCode == 429 || respCode == 500 || respCode == 502 || respCode == 504;
+    private static boolean shouldRetryWithNextModel(int responseCode) {
+        return responseCode == 404 || responseCode == 429 || responseCode == 500
+                || responseCode == 502 || responseCode == 503 || responseCode == 504;
     }
 
     private static boolean shouldRetryWithNextModel(Exception e) {
         if (e == null) return false;
-        if (e instanceof java.net.SocketTimeoutException) return true;
-        String msg = e.getMessage();
-        if (msg == null) return false;
-        return msg.contains("404") || msg.contains("503") || msg.contains("429") || msg.contains("500") || msg.contains("502") || msg.contains("504") || msg.contains("timeout") || msg.contains("overloaded");
+        if (e instanceof java.net.SocketTimeoutException
+                || e instanceof java.net.ConnectException
+                || e instanceof java.net.UnknownHostException) return true;
+        String message = e.getMessage();
+        if (message == null) return false;
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("404") || lower.contains("429") || lower.contains("500")
+                || lower.contains("502") || lower.contains("503") || lower.contains("504")
+                || lower.contains("timeout") || lower.contains("overloaded");
     }
 
     public interface StudentReplyCallback {
@@ -94,6 +106,82 @@ public class AIRepository {
             }
         }
         return sInstance;
+    }
+    /** Sends a Gemini request through the authenticated Cloudflare Worker. */
+    private JsonObject callGeminiProxy(JsonObject geminiRequest) throws Exception {
+        FirebaseUser user = null;
+        try {
+            user = FirebaseAuth.getInstance().getCurrentUser();
+        } catch (Throwable ignored) {}
+
+        String idToken = "";
+        if (user != null) {
+            try {
+                idToken = Tasks.await(user.getIdToken(false), 10, TimeUnit.SECONDS).getToken();
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to get Firebase user ID token for AI proxy: " + t.getMessage());
+            }
+        }
+
+        Exception lastException = null;
+
+        for (String model : AI_MODELS) {
+            HttpURLConnection conn = null;
+            try {
+                JsonObject payload = new JsonObject();
+                payload.addProperty("model", model);
+                payload.add("request", geminiRequest);
+
+                conn = (HttpURLConnection) new URL(AI_PROXY_URL).openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                if (idToken != null && !idToken.isEmpty()) {
+                    conn.setRequestProperty("Authorization", "Bearer " + idToken);
+                }
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(30000);
+                conn.setDoOutput(true);
+
+                byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body);
+                }
+
+                int responseCode = conn.getResponseCode();
+                String responseBody = responseCode >= 200 && responseCode < 300
+                        ? readStream(conn.getInputStream())
+                        : readStream(conn.getErrorStream());
+
+                if (responseCode >= 200 && responseCode < 300) {
+                    JsonObject resObj = JsonParser.parseString(responseBody).getAsJsonObject();
+                    if (resObj.has("error")) {
+                        throw new IOException("Proxy error: " + resObj.get("error").toString());
+                    }
+                    return resObj;
+                }
+
+                IOException modelError = new IOException(
+                        "EduMate AI proxy returned HTTP " + responseCode + " for " + model
+                                + (responseBody.isEmpty() ? "." : ": " + responseBody));
+                lastException = modelError;
+
+                if (!shouldRetryWithNextModel(responseCode)) {
+                    throw modelError;
+                }
+                Log.w(TAG, "Model " + model + " unavailable; trying next model. HTTP " + responseCode);
+            } catch (Exception e) {
+                lastException = e;
+                if (!shouldRetryWithNextModel(e)) {
+                    throw e;
+                }
+                Log.w(TAG, "Request with model " + model + " failed; trying next model: " + e.getMessage());
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }
+
+        if (lastException != null) throw lastException;
+        throw new IOException("No configured Gemini model is currently available through AI proxy.");
     }
 
     private AIRepository(Context context) {
@@ -144,7 +232,7 @@ public class AIRepository {
     }
 
     public boolean hasApiKey() {
-        return !getApiKey().isEmpty();
+        return !getApiKey().isEmpty() || (FirebaseAuth.getInstance().getCurrentUser() != null);
     }
 
     public boolean isNetworkConnected() {
@@ -162,126 +250,75 @@ public class AIRepository {
     public void testApiKey(String apiKey, TestApiKeyCallback callback) {
         executors.networkIO().execute(() -> {
             String cleanKey = sanitizeApiKey(apiKey);
-            if (cleanKey.isEmpty()) {
-                postToMain(() -> callback.onError("API Key is empty. Please enter a valid Gemini API key."));
-                return;
-            }
-            if (!isNetworkConnected()) {
-                postToMain(() -> callback.onError("No Internet Connection: Your device appears to be offline.\n\nPlease connect to active Wi-Fi or Mobile Data and try again."));
-                return;
-            }
-            try {
-                String modelUsed = callGeminiPing(cleanKey);
-                postToMain(() -> callback.onSuccess(modelUsed));
-            } catch (Exception e) {
-                String msg = formatNetworkException(e);
-                postToMain(() -> callback.onError(msg));
-            }
-        });
-    }
-
-    private String callGeminiPing(String apiKey) throws Exception {
-        // Fast path 1: Instant metadata check via models.list (GET).
-        // Validates API key, network reachability, and Google identity in < 500ms without model inference latency.
-        String listEndpoint = "https://generativelanguage.googleapis.com/v1beta/models?key=" + apiKey;
-        try {
-            URL url = new URL(listEndpoint);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("x-goog-api-key", apiKey);
-            applyAndroidCertHeaders(conn);
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
-
-            int respCode = conn.getResponseCode();
-            if (respCode == 200) {
-                String body = readStream(conn.getInputStream());
-                for (String preferred : GEMINI_MODELS) {
-                    if (body.contains(preferred)) {
-                        return preferred;
-                    }
-                }
-                return GEMINI_MODELS[0];
-            } else {
-                String errorBody = readStream(conn.getErrorStream());
-                String formatted = formatApiError(respCode, errorBody);
-                Log.e(TAG, "models.list check failed with code " + respCode + ": " + formatted);
-                throw new IOException(formatted);
-            }
-        } catch (IOException e) {
-            if (e.getMessage() != null && e.getMessage().startsWith("Gemini")) {
-                throw e;
-            }
-            Log.w(TAG, "models.list failed (" + e.getMessage() + "), attempting direct ping fallback");
-        }
-
-        // Fast path 2: Direct minimal token generation with generous 20s timeout
-        JsonObject root = new JsonObject();
-        JsonArray contents = new JsonArray();
-        JsonObject turn = new JsonObject();
-        turn.addProperty("role", "user");
-        JsonArray parts = new JsonArray();
-        JsonObject p = new JsonObject();
-        p.addProperty("text", "Hi");
-        parts.add(p);
-        turn.add("parts", parts);
-        contents.add(turn);
-        root.add("contents", contents);
-
-        JsonObject genConfig = new JsonObject();
-        genConfig.addProperty("maxOutputTokens", 5);
-        root.add("generationConfig", genConfig);
-
-        byte[] body = root.toString().getBytes(StandardCharsets.UTF_8);
-        Exception lastException = null;
-
-        for (String modelName : GEMINI_MODELS) {
-            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
-            int maxRetries = 3;
-            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            if (!cleanKey.isEmpty()) {
                 try {
-                    URL url = new URL(endpoint);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("POST");
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    conn.setRequestProperty("x-goog-api-key", apiKey);
-                    applyAndroidCertHeaders(conn);
-                    conn.setConnectTimeout(20000);
-                    conn.setReadTimeout(25000);
-                    conn.setDoOutput(true);
+                    JsonObject request = new JsonObject();
+                    JsonArray contents = new JsonArray();
+                    JsonObject turn = new JsonObject();
+                    turn.addProperty("role", "user");
+                    JsonArray parts = new JsonArray();
+                    JsonObject part = new JsonObject();
+                    part.addProperty("text", "Reply with the single word OK.");
+                    parts.add(part);
+                    turn.add("parts", parts);
+                    contents.add(turn);
+                    request.add("contents", contents);
 
-                    try (OutputStream os = conn.getOutputStream()) {
-                        os.write(body);
-                    }
+                    for (String modelName : AI_MODELS) {
+                        HttpURLConnection conn = null;
+                        try {
+                            URL url = new URL("https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + cleanKey);
+                            conn = (HttpURLConnection) url.openConnection();
+                            conn.setRequestMethod("POST");
+                            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                            applyAndroidCertHeaders(conn);
+                            conn.setConnectTimeout(10000);
+                            conn.setReadTimeout(15000);
+                            conn.setDoOutput(true);
 
-                    int respCode = conn.getResponseCode();
-                    if (respCode == 200) {
-                        return modelName;
-                    } else if (respCode == 503 || respCode == 429) {
-                        String errorBody = readStream(conn.getErrorStream());
-                        String formatted = formatApiError(respCode, errorBody);
-                        Log.w(TAG, "Ping on " + modelName + " returned HTTP " + respCode + ": " + formatted);
-                        lastException = new IOException(formatted);
-                        break;
-                    } else {
-                        String errorBody = readStream(conn.getErrorStream());
-                        String formatted = formatApiError(respCode, errorBody);
-                        Log.e(TAG, "Ping failed on " + modelName + ": " + formatted);
-                        lastException = new IOException(formatted);
-                        if (!shouldRetryWithNextModel(respCode)) {
-                            throw lastException;
+                            byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
+                            try (OutputStream os = conn.getOutputStream()) {
+                                os.write(body);
+                            }
+
+                            int respCode = conn.getResponseCode();
+                            if (respCode >= 200 && respCode < 300) {
+                                postToMain(() -> callback.onSuccess(modelName));
+                                return;
+                            }
+                        } finally {
+                            if (conn != null) conn.disconnect();
                         }
                     }
-                } catch (Exception e) {
-                    lastException = e;
-                    if (!shouldRetryWithNextModel(e)) {
-                        throw e;
-                    }
+                } catch (Throwable t) {
+                    postToMain(() -> callback.onError(formatNetworkException(t)));
+                    return;
                 }
             }
-        }
-        if (lastException != null) throw lastException;
-        return GEMINI_MODELS[0];
+
+            try {
+                JsonObject request = new JsonObject();
+                JsonArray contents = new JsonArray();
+                JsonObject turn = new JsonObject();
+                turn.addProperty("role", "user");
+                JsonArray parts = new JsonArray();
+                JsonObject part = new JsonObject();
+                part.addProperty("text", "Reply with the single word OK.");
+                parts.add(part);
+                turn.add("parts", parts);
+                contents.add(turn);
+                request.add("contents", contents);
+                JsonObject response = callGeminiProxy(request);
+                if (response.has("candidates") && !response.getAsJsonArray("candidates").isEmpty()) {
+                    postToMain(() -> callback.onSuccess("Cloudflare Worker"));
+                } else {
+                    postToMain(() -> callback.onError("The AI proxy responded, but no model output was returned."));
+                }
+            } catch (Throwable e) {
+                String message = formatNetworkException(e);
+                postToMain(() -> callback.onError(message));
+            }
+        });
     }
 
     // --- TOPIC CHECKLIST ---
@@ -411,23 +448,36 @@ public class AIRepository {
     public void generateStudentReply(String topic, List<Message> history,
                                      StudentReplyCallback callback) {
         executors.networkIO().execute(() -> {
-            String apiKey = getApiKey();
             String geminiError = null;
 
+            // 1. First attempt: Authenticated Cloudflare Worker Proxy
+            try {
+                String reply = callGeminiForStudentReply(topic, history);
+                if (reply != null && !reply.trim().isEmpty()) {
+                    postToMain(() -> callback.onSuccessWithStatus(reply.trim(), true, null));
+                    return;
+                }
+            } catch (Throwable e) {
+                geminiError = e.getMessage();
+                Log.w(TAG, "EduMate AI proxy student reply failed: " + geminiError);
+            }
+
+            // 2. Second attempt: Direct Gemini API key (if available)
+            String apiKey = getApiKey();
             if (apiKey != null && !apiKey.isEmpty()) {
                 try {
-                    String reply = callGeminiForStudentReply(topic, history, apiKey);
+                    String reply = callGeminiDirectForStudentReply(topic, history, apiKey);
                     if (reply != null && !reply.trim().isEmpty()) {
                         postToMain(() -> callback.onSuccessWithStatus(reply.trim(), true, null));
                         return;
                     }
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     geminiError = e.getMessage();
-                    Log.e(TAG, "Gemini API student reply failed: " + geminiError, e);
+                    Log.w(TAG, "Direct Gemini student reply failed: " + geminiError);
                 }
             }
 
-            // Adaptive local simulation with input comprehension
+            // 3. Fallback: Adaptive local Feynman student
             String fallbackReply = generateFallbackStudentReply(topic, history);
             final String finalError = geminiError;
             postToMain(() -> callback.onSuccessWithStatus(fallbackReply, false, finalError));
@@ -565,23 +615,36 @@ public class AIRepository {
                 return;
             }
 
-            String apiKey = getApiKey();
             String geminiError = null;
 
+            // 1. First attempt: Authenticated Cloudflare Worker Proxy
+            try {
+                Evaluation eval = callGeminiForEvaluation(topic, learnerMessages);
+                if (eval != null) {
+                    postToMain(() -> callback.onSuccessWithStatus(eval, true, null));
+                    return;
+                }
+            } catch (Throwable e) {
+                geminiError = e.getMessage();
+                Log.w(TAG, "EduMate AI proxy evaluation failed: " + geminiError);
+            }
+
+            // 2. Second attempt: Direct Gemini API key (if available)
+            String apiKey = getApiKey();
             if (apiKey != null && !apiKey.isEmpty()) {
                 try {
-                    Evaluation eval = callGeminiForEvaluation(topic, learnerMessages, apiKey);
+                    Evaluation eval = callGeminiDirectForEvaluation(topic, learnerMessages, apiKey);
                     if (eval != null) {
                         postToMain(() -> callback.onSuccessWithStatus(eval, true, null));
                         return;
                     }
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     geminiError = e.getMessage();
-                    Log.e(TAG, "Gemini evaluation failed: " + geminiError, e);
+                    Log.w(TAG, "Direct Gemini evaluation failed: " + geminiError);
                 }
             }
 
-            // Local rubric evaluation fallback
+            // 3. Fallback: Local rubric evaluation
             Evaluation localEval = evaluateLocally(topic, learnerMessages);
             final String finalError = geminiError;
             postToMain(() -> callback.onSuccessWithStatus(localEval, false, finalError));
@@ -690,35 +753,7 @@ public class AIRepository {
 
     // --- GEMINI REST API INTEGRATION ---
 
-    private String callGeminiForStudentReply(String topic, List<Message> history, String apiKey) throws Exception {
-        JsonObject root = new JsonObject();
-
-        // 1. System Instruction
-        JsonObject systemInstruction = new JsonObject();
-        JsonArray sysArray = new JsonArray();
-        JsonObject sysParts = new JsonObject();
-        String sysText = "You are an inquisitive, curious student being taught about '" + topic + "' by a human teacher using the Feynman Technique.\n\n"
-                + "CRITICAL RULES:\n"
-                + "1. You are the STUDENT, NOT the teacher. Do NOT lecture, summarize the topic, or explain the solution.\n"
-                + "2. Carefully read the teacher's latest message and react directly to what they said:\n"
-                + "   - If the teacher says 'I don't know', 'no idea', or asks for help, react encouragingly (give an intuitive clue, offer a simple sub-question, or share an intuitive everyday analogy).\n"
-                + "   - If the teacher explains a concept, acknowledge their explanation and ask a probing follow-up question to test depth, causality, or practical examples.\n"
-                + "   - If the teacher writes a vague or one-word answer, ask them to clarify or elaborate.\n"
-                + "3. Ask exactly ONE focused question per turn.\n"
-                + "4. Keep your response concise (1 to 3 sentences maximum).\n"
-                + "5. Stay in character as a curious learner.";
-        sysParts.addProperty("text", sysText);
-        sysArray.add(sysParts);
-        systemInstruction.add("parts", sysArray);
-        root.add("systemInstruction", systemInstruction);
-
-        // 2. Generation Config
-        JsonObject genConfig = new JsonObject();
-        genConfig.addProperty("temperature", 0.7);
-        genConfig.addProperty("maxOutputTokens", 250);
-        root.add("generationConfig", genConfig);
-
-        // 3. Contents Array (Must obey Gemini rules: starts with user, strictly alternates)
+    private JsonArray buildConversationContents(String topic, List<Message> history) {
         JsonArray contents = new JsonArray();
 
         if (history == null || history.isEmpty()) {
@@ -779,83 +814,113 @@ public class AIRepository {
                 contents.add(promptTurn);
             }
         }
-        root.add("contents", contents);
+        return contents;
+    }
 
-        byte[] body = root.toString().getBytes(StandardCharsets.UTF_8);
+    private JsonObject buildStudentReplyRequest(String topic, List<Message> history) {
+        JsonObject root = new JsonObject();
+
+        JsonObject systemInstruction = new JsonObject();
+        JsonArray sysArray = new JsonArray();
+        JsonObject sysParts = new JsonObject();
+        String sysText = "You are an inquisitive, curious student being taught about '" + topic + "' by a human teacher using the Feynman Technique.\n\n"
+                + "CRITICAL RULES:\n"
+                + "1. You are the STUDENT, NOT the teacher. Do NOT lecture, summarize the topic, or explain the solution.\n"
+                + "2. Carefully read the teacher's latest message and react directly to what they said:\n"
+                + "   - If the teacher says 'I don't know', 'no idea', or asks for help, react encouragingly (give an intuitive clue, offer a simple sub-question, or share an intuitive everyday analogy).\n"
+                + "   - If the teacher explains a concept, acknowledge their explanation and ask a probing follow-up question to test depth, causality, or practical examples.\n"
+                + "   - If the teacher writes a vague or one-word answer, ask them to clarify or elaborate.\n"
+                + "3. Ask exactly ONE focused question per turn.\n"
+                + "4. Keep your response concise (1 to 3 sentences maximum).\n"
+                + "5. Stay in character as a curious learner.";
+        sysParts.addProperty("text", sysText);
+        sysArray.add(sysParts);
+        systemInstruction.add("parts", sysArray);
+        root.add("systemInstruction", systemInstruction);
+
+        JsonObject genConfig = new JsonObject();
+        genConfig.addProperty("temperature", 0.7);
+        genConfig.addProperty("maxOutputTokens", 250);
+        root.add("generationConfig", genConfig);
+
+        root.add("contents", buildConversationContents(topic, history));
+        return root;
+    }
+
+    private String callGeminiForStudentReply(String topic, List<Message> history) throws Exception {
+        JsonObject root = buildStudentReplyRequest(topic, history);
+        JsonObject response = callGeminiProxy(root);
+        return parseStudentReplyResponse(response);
+    }
+
+    private String callGeminiDirectForStudentReply(String topic, List<Message> history, String apiKey) throws Exception {
+        JsonObject root = buildStudentReplyRequest(topic, history);
+        String jsonPayload = root.toString();
         Exception lastException = null;
-        String cleanKey = sanitizeApiKey(apiKey);
 
-        for (String modelName : GEMINI_MODELS) {
-            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + cleanKey;
-            int maxRetries = 3;
-            for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    URL url = new URL(endpoint);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("POST");
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    conn.setRequestProperty("x-goog-api-key", cleanKey);
-                    applyAndroidCertHeaders(conn);
-                    conn.setConnectTimeout(20000);
-                    conn.setReadTimeout(25000);
-                    conn.setDoOutput(true);
+        for (String modelName : AI_MODELS) {
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL("https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                applyAndroidCertHeaders(conn);
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(30000);
+                conn.setDoOutput(true);
 
-                    try (OutputStream os = conn.getOutputStream()) {
-                        os.write(body);
+                byte[] body = jsonPayload.getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body);
+                }
+
+                int respCode = conn.getResponseCode();
+                if (respCode >= 200 && respCode < 300) {
+                    String responseBody = readStream(conn.getInputStream());
+                    JsonObject response = JsonParser.parseString(responseBody).getAsJsonObject();
+                    return parseStudentReplyResponse(response);
+                } else {
+                    String errorBody = readStream(conn.getErrorStream());
+                    String formatted = formatApiError(respCode, errorBody);
+                    lastException = new IOException(formatted);
+                    if (!shouldRetryWithNextModel(respCode)) {
+                        throw lastException;
                     }
+                }
+            } catch (Exception e) {
+                lastException = e;
+                if (!shouldRetryWithNextModel(e)) {
+                    throw e;
+                }
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }
+        if (lastException != null) throw lastException;
+        throw new IOException("Direct Gemini call failed for all models.");
+    }
 
-                    int respCode = conn.getResponseCode();
-                    if (respCode == 200) {
-                        try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                            StringBuilder sb = new StringBuilder();
-                            String line;
-                            while ((line = br.readLine()) != null) sb.append(line);
-                            JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
-                            if (res.has("candidates") && res.getAsJsonArray("candidates").size() > 0) {
-                                JsonObject cand = res.getAsJsonArray("candidates").get(0).getAsJsonObject();
-                                JsonObject content = cand.getAsJsonObject("content");
-                                if (content != null && content.has("parts")) {
-                                    JsonArray parts = content.getAsJsonArray("parts");
-                                    if (parts.size() > 0) {
-                                        String text = parts.get(0).getAsJsonObject().get("text").getAsString();
-                                        if (text != null && !text.trim().isEmpty()) {
-                                            return text.trim();
-                                        }
-                                    }
-                                }
-                            }
+    private String parseStudentReplyResponse(JsonObject response) throws IOException {
+        if (response != null && response.has("candidates") && response.getAsJsonArray("candidates").size() > 0) {
+            JsonObject candidate = response.getAsJsonArray("candidates").get(0).getAsJsonObject();
+            if (candidate.has("content")) {
+                JsonObject content = candidate.getAsJsonObject("content");
+                if (content.has("parts")) {
+                    JsonArray responseParts = content.getAsJsonArray("parts");
+                    for (JsonElement element : responseParts) {
+                        if (element.isJsonObject() && element.getAsJsonObject().has("text")) {
+                            String reply = element.getAsJsonObject().get("text").getAsString();
+                            if (reply != null && !reply.trim().isEmpty()) return reply.trim();
                         }
-                    } else if (respCode == 503 || respCode == 429) {
-                        String errorBody = readStream(conn.getErrorStream());
-                        String formatted = formatApiError(respCode, errorBody);
-                        Log.w(TAG, modelName + " returned HTTP " + respCode + ": " + formatted);
-                        lastException = new IOException(formatted);
-                        break;
-                    } else {
-                        String errorBody = readStream(conn.getErrorStream());
-                        String formatted = formatApiError(respCode, errorBody);
-                        Log.e(TAG, "Gemini student reply HTTP " + respCode + " on " + modelName + ": " + formatted);
-                        lastException = new IOException(formatted);
-                        if (!shouldRetryWithNextModel(respCode)) {
-                            throw lastException;
-                        }
-                    }
-                } catch (Exception e) {
-                    lastException = e;
-                    if (!shouldRetryWithNextModel(e)) {
-                        throw e;
                     }
                 }
             }
         }
-
-        if (lastException != null) {
-            throw lastException;
-        }
-        return null;
+        throw new IOException("Gemini returned an empty student reply.");
     }
 
-    private Evaluation callGeminiForEvaluation(String topic, List<Message> learnerMessages, String apiKey) throws Exception {
+    private JsonObject buildEvaluationRequest(String topic, List<Message> learnerMessages) {
         JsonObject root = new JsonObject();
 
         JsonObject genConfig = new JsonObject();
@@ -898,73 +963,81 @@ public class AIRepository {
         contents.add(contentObj);
         root.add("contents", contents);
 
-        byte[] body = root.toString().getBytes(StandardCharsets.UTF_8);
+        return root;
+    }
+
+    private Evaluation callGeminiForEvaluation(String topic, List<Message> learnerMessages) throws Exception {
+        JsonObject root = buildEvaluationRequest(topic, learnerMessages);
+        JsonObject response = callGeminiProxy(root);
+        return parseEvaluationResponse(response);
+    }
+
+    private Evaluation callGeminiDirectForEvaluation(String topic, List<Message> learnerMessages, String apiKey) throws Exception {
+        JsonObject root = buildEvaluationRequest(topic, learnerMessages);
+        String jsonPayload = root.toString();
         Exception lastException = null;
-        String cleanKey = sanitizeApiKey(apiKey);
 
-        for (String modelName : GEMINI_MODELS) {
-            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + cleanKey;
-            int maxRetries = 3;
-            for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    URL url = new URL(endpoint);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("POST");
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    conn.setRequestProperty("x-goog-api-key", cleanKey);
-                    applyAndroidCertHeaders(conn);
-                    conn.setConnectTimeout(20000);
-                    conn.setReadTimeout(30000);
-                    conn.setDoOutput(true);
+        for (String modelName : AI_MODELS) {
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL("https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                applyAndroidCertHeaders(conn);
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(30000);
+                conn.setDoOutput(true);
 
-                    try (OutputStream os = conn.getOutputStream()) {
-                        os.write(body);
-                    }
+                byte[] body = jsonPayload.getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body);
+                }
 
-                    int respCode = conn.getResponseCode();
-                    if (respCode == 200) {
-                        try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                            StringBuilder sb = new StringBuilder();
-                            String line;
-                            while ((line = br.readLine()) != null) sb.append(line);
-                            JsonObject res = JsonParser.parseString(sb.toString()).getAsJsonObject();
-                            String jsonText = res.getAsJsonArray("candidates")
-                                    .get(0).getAsJsonObject()
-                                    .getAsJsonObject("content")
-                                    .getAsJsonArray("parts")
-                                    .get(0).getAsJsonObject()
-                                    .get("text").getAsString();
-
-                            return parseAndValidateEvaluationJson(jsonText);
-                        }
-                    } else if (respCode == 503 || respCode == 429) {
-                        String errorBody = readStream(conn.getErrorStream());
-                        String formatted = formatApiError(respCode, errorBody);
-                        Log.w(TAG, "Evaluation on " + modelName + " returned HTTP " + respCode + ": " + formatted);
-                        lastException = new IOException(formatted);
-                        break;
-                    } else {
-                        String errorBody = readStream(conn.getErrorStream());
-                        String formatted = formatApiError(respCode, errorBody);
-                        Log.e(TAG, "Gemini evaluation HTTP " + respCode + " on " + modelName + ": " + formatted);
-                        lastException = new IOException(formatted);
-                        if (!shouldRetryWithNextModel(respCode)) {
-                            throw lastException;
-                        }
-                    }
-                } catch (Exception e) {
-                    lastException = e;
-                    if (!shouldRetryWithNextModel(e)) {
-                        throw e;
+                int respCode = conn.getResponseCode();
+                if (respCode >= 200 && respCode < 300) {
+                    String responseBody = readStream(conn.getInputStream());
+                    JsonObject response = JsonParser.parseString(responseBody).getAsJsonObject();
+                    return parseEvaluationResponse(response);
+                } else {
+                    String errorBody = readStream(conn.getErrorStream());
+                    String formatted = formatApiError(respCode, errorBody);
+                    lastException = new IOException(formatted);
+                    if (!shouldRetryWithNextModel(respCode)) {
+                        throw lastException;
                     }
                 }
+            } catch (Exception e) {
+                lastException = e;
+                if (!shouldRetryWithNextModel(e)) {
+                    throw e;
+                }
+            } finally {
+                if (conn != null) conn.disconnect();
             }
         }
+        if (lastException != null) throw lastException;
+        throw new IOException("Direct Gemini evaluation failed for all models.");
+    }
 
-        if (lastException != null) {
-            throw lastException;
+    private Evaluation parseEvaluationResponse(JsonObject response) throws IOException {
+        if (!response.has("candidates") || response.getAsJsonArray("candidates").isEmpty()) {
+            throw new IOException("Gemini returned no evaluation candidate.");
         }
-        return null;
+
+        JsonObject candidate = response.getAsJsonArray("candidates").get(0).getAsJsonObject();
+        JsonObject content = candidate.getAsJsonObject("content");
+        JsonArray responseParts = content.getAsJsonArray("parts");
+        StringBuilder generatedText = new StringBuilder();
+        for (JsonElement element : responseParts) {
+            if (element.isJsonObject() && element.getAsJsonObject().has("text")) {
+                generatedText.append(element.getAsJsonObject().get("text").getAsString());
+            }
+        }
+        if (generatedText.length() == 0) {
+            throw new IOException("Gemini returned an empty evaluation.");
+        }
+        return parseAndValidateEvaluationJson(generatedText.toString().trim());
     }
 
     private void applyAndroidCertHeaders(HttpURLConnection conn) {
@@ -1080,7 +1153,7 @@ public class AIRepository {
 
         String lower = msg != null ? msg.toLowerCase(Locale.ROOT) : "";
         if (t instanceof java.net.SocketTimeoutException || lower.contains("timeout") || lower.contains("timed out")) {
-            return "Connection Timed Out: The request to Google Gemini API took too long to respond.\n\n"
+            return "Connection Timed Out: The request to the EduMate AI service took too long to respond.\n\n"
                     + "Troubleshooting:\n"
                     + "• Your internet connection may be slow or unstable.\n"
                     + "• Try switching between Wi-Fi and Mobile Data.\n"
@@ -1089,21 +1162,21 @@ public class AIRepository {
         }
 
         if (t instanceof java.net.UnknownHostException || lower.contains("unable to resolve host") || lower.contains("no address")) {
-            return "No Internet Connection: Could not resolve generativelanguage.googleapis.com.\n\n"
+            return "No Internet Connection: Could not resolve the EduMate AI service host.\n\n"
                     + "Troubleshooting:\n"
                     + "• Please verify that your phone is connected to active Wi-Fi or Mobile Data.\n"
                     + "• Check if websites open in your phone's browser.";
         }
 
         if (t instanceof java.net.ConnectException) {
-            return "Connection Refused: Could not connect to Google Gemini servers.\n\nPlease check your network connection or firewall.";
+            return "Connection Refused: Could not connect to the EduMate AI service.\n\nPlease check your network connection or firewall.";
         }
 
         if (t instanceof javax.net.ssl.SSLException) {
             return "SSL Handshake Failed: Unable to establish a secure connection.\n\nPlease check that your device's date and time are accurate.";
         }
 
-        return msg != null && !msg.isEmpty() ? msg : "Network error connecting to Gemini API.";
+        return msg != null && !msg.isEmpty() ? msg : "Network error connecting to EduMate AI.";
     }
 
     private static String readStream(InputStream is) {

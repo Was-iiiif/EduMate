@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "985383729246-5mcedn6bndabklcod2570ut6212h0hp1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.edumate.app",
+            "certificate_hash": "d07d003ea5e739beb8a4904ce499657f9023139b"
+          }
+        },
+        {
           "client_id": "985383729246-39vnket07acdrssakrdiho3oqljt9sng.apps.googleusercontent.com",
           "client_type": 3
         }

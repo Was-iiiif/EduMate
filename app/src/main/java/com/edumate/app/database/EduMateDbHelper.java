@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteOpenHelper;
 
 public class EduMateDbHelper extends SQLiteOpenHelper {
     public static final String DATABASE_NAME = "edumate.db";
-    public static final int DATABASE_VERSION = 3;
+    public static final int DATABASE_VERSION = 4;
 
     // Table sessions
     public static final String TABLE_SESSIONS = "sessions";
@@ -110,10 +110,92 @@ public class EduMateDbHelper extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        if (oldVersion < 3) {
+        migrateSessionsTable(db);
+    }
+
+    @Override
+    public void onOpen(SQLiteDatabase db) {
+        super.onOpen(db);
+        migrateSessionsTable(db);
+    }
+
+    /**
+     * Safely migrates sessions table: eliminates legacy persona column and guarantees
+     * user_id column exists with a default value, preserving all existing sessions.
+     */
+    public synchronized void migrateSessionsTable(SQLiteDatabase db) {
+        android.database.Cursor cursor = null;
+        boolean hasPersona = false;
+        boolean hasUserId = false;
+        try {
+            cursor = db.rawQuery("PRAGMA table_info(" + TABLE_SESSIONS + ")", null);
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    int nameIdx = cursor.getColumnIndex("name");
+                    if (nameIdx != -1) {
+                        String name = cursor.getString(nameIdx);
+                        if ("persona".equalsIgnoreCase(name)) {
+                            hasPersona = true;
+                        } else if (COL_SESSION_USER_ID.equalsIgnoreCase(name)) {
+                            hasUserId = true;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+
+        if (hasPersona || !hasUserId) {
             try {
-                db.execSQL("ALTER TABLE " + TABLE_SESSIONS + " ADD COLUMN " + COL_SESSION_USER_ID + " TEXT DEFAULT ''");
-            } catch (Exception ignored) {}
+                db.beginTransaction();
+                try {
+                    db.execSQL("CREATE TABLE IF NOT EXISTS sessions_v4 ("
+                            + COL_SESSION_ID + " TEXT PRIMARY KEY, "
+                            + COL_SESSION_USER_ID + " TEXT NOT NULL DEFAULT '', "
+                            + COL_SESSION_TOPIC + " TEXT NOT NULL, "
+                            + COL_SESSION_STARTED_AT + " INTEGER NOT NULL, "
+                            + COL_SESSION_ENDED_AT + " INTEGER, "
+                            + COL_SESSION_STATUS + " TEXT NOT NULL, "
+                            + COL_SESSION_OVERALL_SCORE + " REAL DEFAULT 0.0, "
+                            + COL_SESSION_SYNC_STATUS + " TEXT NOT NULL, "
+                            + COL_SESSION_DELETED_AT + " INTEGER"
+                            + ");");
+
+                    String selectUserId = hasUserId ? "COALESCE(" + COL_SESSION_USER_ID + ", '')" : "''";
+                    db.execSQL("INSERT OR REPLACE INTO sessions_v4 ("
+                            + COL_SESSION_ID + ", "
+                            + COL_SESSION_USER_ID + ", "
+                            + COL_SESSION_TOPIC + ", "
+                            + COL_SESSION_STARTED_AT + ", "
+                            + COL_SESSION_ENDED_AT + ", "
+                            + COL_SESSION_STATUS + ", "
+                            + COL_SESSION_OVERALL_SCORE + ", "
+                            + COL_SESSION_SYNC_STATUS + ", "
+                            + COL_SESSION_DELETED_AT + ") "
+                            + "SELECT "
+                            + COL_SESSION_ID + ", "
+                            + selectUserId + ", "
+                            + COL_SESSION_TOPIC + ", "
+                            + COL_SESSION_STARTED_AT + ", "
+                            + COL_SESSION_ENDED_AT + ", "
+                            + COL_SESSION_STATUS + ", "
+                            + COL_SESSION_OVERALL_SCORE + ", "
+                            + COL_SESSION_SYNC_STATUS + ", "
+                            + COL_SESSION_DELETED_AT + " FROM " + TABLE_SESSIONS + ";");
+
+                    db.execSQL("DROP TABLE " + TABLE_SESSIONS);
+                    db.execSQL("ALTER TABLE sessions_v4 RENAME TO " + TABLE_SESSIONS);
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            } catch (Throwable t) {
+                android.util.Log.e("EduMateDbHelper", "Error migrating sessions table", t);
+            }
         }
     }
 }

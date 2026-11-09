@@ -63,12 +63,19 @@ public class SessionRepository {
             session.setUserId(getCurrentUserId());
         }
         executors.diskIO().execute(() -> {
-            long rowId = sessionDao.insertSession(session);
             try {
-                FirestoreRepository.getInstance().syncSession(session, null);
-            } catch (Throwable ignored) {}
-            if (callback != null) {
-                executors.mainThread().execute(() -> callback.onResult(rowId));
+                long rowId = sessionDao.insertSession(session);
+                try {
+                    FirestoreRepository.getInstance().syncSession(session, null);
+                } catch (Throwable ignored) {}
+                if (callback != null) {
+                    executors.mainThread().execute(() -> callback.onResult(rowId));
+                }
+            } catch (Throwable t) {
+                android.util.Log.e("SessionRepository", "insertSession background error: " + t.getMessage(), t);
+                if (callback != null) {
+                    executors.mainThread().execute(() -> callback.onResult(-1L));
+                }
             }
         });
     }
@@ -135,12 +142,19 @@ public class SessionRepository {
 
     public void insertMessage(Message message, Callback<Long> callback) {
         executors.diskIO().execute(() -> {
-            long id = sessionDao.insertMessage(message);
             try {
-                FirestoreRepository.getInstance().syncMessage(message.getSessionId(), message, 1, null);
-            } catch (Throwable ignored) {}
-            if (callback != null) {
-                executors.mainThread().execute(() -> callback.onResult(id));
+                long id = sessionDao.insertMessage(message);
+                try {
+                    FirestoreRepository.getInstance().syncMessage(message.getSessionId(), message, 1, null);
+                } catch (Throwable ignored) {}
+                if (callback != null) {
+                    executors.mainThread().execute(() -> callback.onResult(id));
+                }
+            } catch (Throwable t) {
+                android.util.Log.e("SessionRepository", "insertMessage background error: " + t.getMessage(), t);
+                if (callback != null) {
+                    executors.mainThread().execute(() -> callback.onResult(-1L));
+                }
             }
         });
     }

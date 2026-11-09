@@ -30,27 +30,56 @@ public class SessionDao {
         this.gson = new Gson();
     }
 
+    private boolean hasColumn(SQLiteDatabase db, String tableName, String columnName) {
+        Cursor cursor = null;
+        try {
+            cursor = db.rawQuery("PRAGMA table_info(" + tableName + ")", null);
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    int nameIdx = cursor.getColumnIndex("name");
+                    if (nameIdx != -1 && columnName.equalsIgnoreCase(cursor.getString(nameIdx))) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            if (cursor != null) cursor.close();
+        }
+        return false;
+    }
+
     // --- SESSIONS CRUD ---
 
     public long insertSession(Session session) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        ContentValues cv = new ContentValues();
-        cv.put(EduMateDbHelper.COL_SESSION_ID, session.getId());
-        cv.put(EduMateDbHelper.COL_SESSION_USER_ID, session.getUserId() != null ? session.getUserId() : "");
-        cv.put(EduMateDbHelper.COL_SESSION_TOPIC, session.getTopic());
-        cv.put(EduMateDbHelper.COL_SESSION_STARTED_AT, session.getStartedAt());
-        cv.put(EduMateDbHelper.COL_SESSION_ENDED_AT, session.getEndedAt());
-        cv.put(EduMateDbHelper.COL_SESSION_STATUS, session.getStatus());
-        cv.put(EduMateDbHelper.COL_SESSION_OVERALL_SCORE, session.getOverallScore());
-        cv.put(EduMateDbHelper.COL_SESSION_SYNC_STATUS, session.getSyncStatus());
-        cv.put(EduMateDbHelper.COL_SESSION_DELETED_AT, session.getDeletedAt());
+        try {
+            SQLiteDatabase db = dbHelper.getWritableDatabase();
+            ContentValues cv = new ContentValues();
+            cv.put(EduMateDbHelper.COL_SESSION_ID, session.getId());
+            cv.put(EduMateDbHelper.COL_SESSION_USER_ID, session.getUserId() != null ? session.getUserId() : "");
+            cv.put(EduMateDbHelper.COL_SESSION_TOPIC, session.getTopic());
+            cv.put(EduMateDbHelper.COL_SESSION_STARTED_AT, session.getStartedAt());
+            cv.put(EduMateDbHelper.COL_SESSION_ENDED_AT, session.getEndedAt());
+            cv.put(EduMateDbHelper.COL_SESSION_STATUS, session.getStatus());
+            cv.put(EduMateDbHelper.COL_SESSION_OVERALL_SCORE, session.getOverallScore());
+            cv.put(EduMateDbHelper.COL_SESSION_SYNC_STATUS, session.getSyncStatus());
+            cv.put(EduMateDbHelper.COL_SESSION_DELETED_AT, session.getDeletedAt());
 
-        return db.insertWithOnConflict(
-                EduMateDbHelper.TABLE_SESSIONS,
-                null,
-                cv,
-                SQLiteDatabase.CONFLICT_REPLACE
-        );
+            // Defensive compatibility: If legacy table still has persona column, satisfy NOT NULL
+            if (hasColumn(db, EduMateDbHelper.TABLE_SESSIONS, "persona")) {
+                cv.put("persona", "BEGINNER");
+            }
+
+            return db.insertWithOnConflict(
+                    EduMateDbHelper.TABLE_SESSIONS,
+                    null,
+                    cv,
+                    SQLiteDatabase.CONFLICT_REPLACE
+            );
+        } catch (Throwable t) {
+            android.util.Log.e("SessionDao", "insertSession failed: " + t.getMessage(), t);
+            return -1;
+        }
     }
 
     public int updateSession(Session session) {
@@ -230,16 +259,21 @@ public class SessionDao {
     // --- MESSAGES CRUD ---
 
     public long insertMessage(Message message) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        ContentValues cv = new ContentValues();
-        cv.put(EduMateDbHelper.COL_MESSAGE_SESSION_ID, message.getSessionId());
-        cv.put(EduMateDbHelper.COL_MESSAGE_SENDER, message.getSender());
-        cv.put(EduMateDbHelper.COL_MESSAGE_TEXT, message.getMessageText());
-        cv.put(EduMateDbHelper.COL_MESSAGE_CREATED_AT, message.getCreatedAt());
+        try {
+            SQLiteDatabase db = dbHelper.getWritableDatabase();
+            ContentValues cv = new ContentValues();
+            cv.put(EduMateDbHelper.COL_MESSAGE_SESSION_ID, message.getSessionId());
+            cv.put(EduMateDbHelper.COL_MESSAGE_SENDER, message.getSender());
+            cv.put(EduMateDbHelper.COL_MESSAGE_TEXT, message.getMessageText());
+            cv.put(EduMateDbHelper.COL_MESSAGE_CREATED_AT, message.getCreatedAt());
 
-        long id = db.insert(EduMateDbHelper.TABLE_MESSAGES, null, cv);
-        message.setId(id);
-        return id;
+            long id = db.insert(EduMateDbHelper.TABLE_MESSAGES, null, cv);
+            message.setId(id);
+            return id;
+        } catch (Throwable t) {
+            android.util.Log.e("SessionDao", "insertMessage failed: " + t.getMessage(), t);
+            return -1;
+        }
     }
 
     public List<Message> getMessagesForSession(String sessionId) {
