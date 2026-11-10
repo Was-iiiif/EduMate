@@ -64,15 +64,28 @@
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
                     android:padding="18dp">
-                    <TextView
-                        android:layout_width="54dp"
-                        android:layout_height="54dp"
+                    <FrameLayout
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
                         android:background="@drawable/bg_avatar_circle"
-                        android:gravity="center"
-                        android:text="E"
-                        android:textColor="@color/on_primary"
-                        android:textSize="24sp"
-                        android:textStyle="bold" />
+                        android:clipToOutline="true">
+                        <TextView
+                            android:id="@+id/tv_profile_initial"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:text="E"
+                            android:textColor="@color/on_primary"
+                            android:textSize="24sp"
+                            android:textStyle="bold" />
+                        <ImageView
+                            android:id="@+id/iv_profile_picture"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:contentDescription="Profile picture"
+                            android:scaleType="centerCrop"
+                            android:visibility="gone" />
+                    </FrameLayout>
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
@@ -104,6 +117,17 @@
                             android:textColor="@color/primary"
                             android:textSize="12sp"
                             android:textStyle="bold" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_edit_profile_picture"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="40dp"
+                            android:layout_marginStart="-8dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minHeight="40dp"
+                            android:text="Edit profile picture"
+                            android:textAllCaps="false" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -150,6 +174,22 @@
                         android:textColor="@color/text_primary"
                         android:textSize="14sp" />
                     <TextView style="@style/SettingsSummary" android:text="@string/setting_tts_auto_play_summary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView style="@style/SettingsSectionTitle" android:text="DAILY LEARNING" />
+            <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+                <LinearLayout style="@style/SettingsCardContent">
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switch_daily_reminder"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Daily learning reminder"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
+                    <TextView
+                        style="@style/SettingsSummary"
+                        android:text="Receive a daily notification encouraging you to learn and grow. Delivery time is managed by Android and may vary." />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

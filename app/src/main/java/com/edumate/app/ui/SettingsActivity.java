@@ -1,7 +1,11 @@
 package com.edumate.app.ui;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.os.Bundle;
@@ -9,11 +13,15 @@ import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
+import androidx.core.content.ContextCompat;
 
 import com.edumate.app.R;
+import com.edumate.app.background.DailyReminderScheduler;
 import com.edumate.app.databinding.ActivitySettingsBinding;
 import com.edumate.app.repository.SessionRepository;
 import com.google.firebase.auth.FirebaseAuth;
@@ -27,11 +35,15 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String KEY_LANGUAGE = "learning_language";
     public static final String KEY_FOLLOW_UP = "follow_up_questions";
     public static final String KEY_THEME = "app_theme";
+    private static final String KEY_PROFILE_PHOTO_URI = "profile_photo_uri";
+    private static final String KEY_DAILY_REMINDER = "daily_learning_reminder";
 
     private ActivitySettingsBinding binding;
     private SessionRepository sessionRepository;
     private SharedPreferences preferences;
     private boolean loadingPreferences = true;
+    private ActivityResultLauncher<String[]> profilePhotoPicker;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
 
     private final String[] levels = {"Beginner", "Intermediate", "Advanced"};
     private final String[] explanationStyles = {"Concise", "Balanced", "Detailed"};
@@ -46,10 +58,12 @@ public class SettingsActivity extends AppCompatActivity {
 
         preferences = getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
         sessionRepository = SessionRepository.getInstance(this);
+        registerActivityResultLaunchers();
 
         setupSpinners();
         loadPreferences();
         loadAccountDetails();
+        loadProfilePhoto();
         loadAppVersion();
         setupClickListeners();
         loadingPreferences = false;
@@ -72,6 +86,8 @@ public class SettingsActivity extends AppCompatActivity {
     private void loadPreferences() {
         binding.switchTtsAuto.setChecked(preferences.getBoolean(KEY_AUTO_PLAY_TTS, true));
         binding.switchFollowUp.setChecked(preferences.getBoolean(KEY_FOLLOW_UP, true));
+        binding.switchDailyReminder.setChecked(
+                preferences.getBoolean(KEY_DAILY_REMINDER, false));
         selectValue(binding.spinnerLearningLevel, levels,
                 preferences.getString(KEY_LEARNING_LEVEL, "Intermediate"));
         selectValue(binding.spinnerExplanationStyle, explanationStyles,
@@ -100,6 +116,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         if (user == null) {
             binding.tvProfileName.setText("Local profile");
+            setProfileInitial("L");
             binding.tvProfileEmail.setText("No active Firebase account");
             binding.tvAccountType.setText("Local mode");
             binding.btnSignOut.setVisibility(View.GONE);
@@ -111,12 +128,93 @@ public class SettingsActivity extends AppCompatActivity {
             displayName = user.isAnonymous() ? "Guest learner" : "EduMate learner";
         }
         binding.tvProfileName.setText(displayName);
+        setProfileInitial(displayName.substring(0, 1).toUpperCase(java.util.Locale.ROOT));
         binding.tvProfileEmail.setText(user.getEmail() == null
                 ? "Email not linked" : user.getEmail());
         binding.tvAccountType.setText(user.isAnonymous()
                 ? "Guest account · data may not follow you to another device"
                 : "Signed-in account");
         binding.btnSignOut.setVisibility(View.VISIBLE);
+    }
+
+    private void registerActivityResultLaunchers() {
+        profilePhotoPicker = registerForActivityResult(
+                new ActivityResultContracts.OpenDocument(), uri -> {
+                    if (uri == null) return;
+                    try {
+                        getContentResolver().takePersistableUriPermission(
+                                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    } catch (SecurityException ignored) {
+                        // Some document providers do not offer persistable grants.
+                    }
+                    preferences.edit().putString(KEY_PROFILE_PHOTO_URI, uri.toString()).apply();
+                    displayProfilePhoto(uri);
+                });
+
+        notificationPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(), granted -> {
+                    if (granted) {
+                        preferences.edit().putBoolean(KEY_DAILY_REMINDER, true).apply();
+                        DailyReminderScheduler.schedule(this);
+                        binding.switchDailyReminder.setChecked(true);
+                    } else {
+                        preferences.edit().putBoolean(KEY_DAILY_REMINDER, false).apply();
+                        binding.switchDailyReminder.setChecked(false);
+                        Toast.makeText(this,
+                                "Allow notifications to receive daily learning reminders.",
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+    }
+
+    private void setProfileInitial(String initial) {
+        binding.tvProfileInitial.setText(initial == null || initial.trim().isEmpty()
+                ? "E" : initial.substring(0, 1).toUpperCase(java.util.Locale.ROOT));
+    }
+
+    private void loadProfilePhoto() {
+        String savedUri = preferences.getString(KEY_PROFILE_PHOTO_URI, null);
+        if (savedUri == null || savedUri.trim().isEmpty()) return;
+        try {
+            displayProfilePhoto(Uri.parse(savedUri));
+        } catch (Exception e) {
+            preferences.edit().remove(KEY_PROFILE_PHOTO_URI).apply();
+        }
+    }
+
+    private void displayProfilePhoto(Uri uri) {
+        try {
+            binding.ivProfilePicture.setImageURI(uri);
+            binding.ivProfilePicture.setVisibility(View.VISIBLE);
+            binding.tvProfileInitial.setVisibility(View.GONE);
+        } catch (Exception e) {
+            binding.ivProfilePicture.setVisibility(View.GONE);
+            binding.tvProfileInitial.setVisibility(View.VISIBLE);
+            Toast.makeText(this, "Could not load that image. Please choose another.",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void chooseProfilePhoto() {
+        profilePhotoPicker.launch(new String[]{"image/*"});
+    }
+
+    private void setDailyReminderEnabled(boolean enabled) {
+        if (!enabled) {
+            preferences.edit().putBoolean(KEY_DAILY_REMINDER, false).apply();
+            DailyReminderScheduler.cancel(this);
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= 33
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+            return;
+        }
+
+        preferences.edit().putBoolean(KEY_DAILY_REMINDER, true).apply();
+        DailyReminderScheduler.schedule(this);
     }
 
     private void loadAppVersion() {
@@ -136,6 +234,9 @@ public class SettingsActivity extends AppCompatActivity {
                 preferences.edit().putBoolean(KEY_AUTO_PLAY_TTS, checked).apply());
         binding.switchFollowUp.setOnCheckedChangeListener((button, checked) ->
                 preferences.edit().putBoolean(KEY_FOLLOW_UP, checked).apply());
+        binding.switchDailyReminder.setOnCheckedChangeListener((button, checked) ->
+                setDailyReminderEnabled(checked));
+        binding.btnEditProfilePicture.setOnClickListener(v -> chooseProfilePhoto());
 
         binding.spinnerLearningLevel.setOnItemSelectedListener(simpleListener(
                 value -> preferences.edit().putString(KEY_LEARNING_LEVEL, value).apply()));

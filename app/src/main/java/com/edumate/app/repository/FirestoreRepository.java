@@ -302,6 +302,15 @@ public class FirestoreRepository {
                         long timestamp = time instanceof Timestamp ? ((Timestamp) time).toDate().getTime() : System.currentTimeMillis();
                         Message message = new Message(session.getId(), "learner".equalsIgnoreCase(sender) ? Message.SENDER_LEARNER : Message.SENDER_STUDENT,
                                 body == null ? "" : body);
+                        // Current EduMate backups use the SQLite message ID as the Firestore
+                        // document ID. Preserve it on restore so later syncs merge into the same
+                        // document instead of duplicating the transcript.
+                        try {
+                            long originalMessageId = Long.parseLong(messageDoc.getId());
+                            if (originalMessageId > 0) message.setId(originalMessageId);
+                        } catch (NumberFormatException ignored) {
+                            // Legacy non-numeric IDs receive a new local SQLite ID.
+                        }
                         message.setCreatedAt(timestamp);
                         restoredMessages.add(message);
                     }

@@ -80,7 +80,8 @@ public class LoginActivity extends AppCompatActivity {
 
         // If user is already authenticated, skip login and launch MainActivity
         if (auth != null && auth.getCurrentUser() != null) {
-            navigateToMain();
+            // Restore this Firebase UID's cloud history before MainActivity loads local history.
+            saveProfileRestoreAndOpenMain(auth.getCurrentUser());
             return;
         }
 
@@ -168,10 +169,12 @@ public class LoginActivity extends AppCompatActivity {
                     if (task.isSuccessful()) {
                         FirebaseUser user = auth.getCurrentUser();
                         if (user != null) {
-                            saveProfileAndStartSync(user);
+                            Toast.makeText(LoginActivity.this, "Signed in with Google successfully!", Toast.LENGTH_SHORT).show();
+                            saveProfileRestoreAndOpenMain(user);
+                        } else {
+                            setLoading(false);
+                            showError("Google sign-in succeeded, but the Firebase user could not be loaded.");
                         }
-                        Toast.makeText(LoginActivity.this, "Signed in with Google successfully!", Toast.LENGTH_SHORT).show();
-                        navigateToMain();
                     } else {
                         String msg = task.getException() != null ? task.getException().getMessage() : "Google authentication failed.";
                         showError(msg);
@@ -201,10 +204,12 @@ public class LoginActivity extends AppCompatActivity {
                     if (task.isSuccessful()) {
                         FirebaseUser user = auth.getCurrentUser();
                         if (user != null) {
-                            saveProfileAndStartSync(user);
+                            Toast.makeText(LoginActivity.this, "Welcome back!", Toast.LENGTH_SHORT).show();
+                            saveProfileRestoreAndOpenMain(user);
+                        } else {
+                            setLoading(false);
+                            showError("Login succeeded, but the Firebase user could not be loaded.");
                         }
-                        Toast.makeText(LoginActivity.this, "Welcome back!", Toast.LENGTH_SHORT).show();
-                        navigateToMain();
                     } else {
                         String msg = task.getException() != null ? task.getException().getMessage() : "Authentication failed.";
                         showError(msg);
@@ -245,10 +250,8 @@ public class LoginActivity extends AppCompatActivity {
                                     .setDisplayName(name)
                                     .build();
                             user.updateProfile(update).addOnCompleteListener(profileTask -> {
-                                setLoading(false);
-                                saveProfileAndStartSync(user);
                                 Toast.makeText(LoginActivity.this, "Account created successfully!", Toast.LENGTH_SHORT).show();
-                                navigateToMain();
+                                saveProfileRestoreAndOpenMain(user);
                             });
                         } else {
                             setLoading(false);
@@ -277,10 +280,12 @@ public class LoginActivity extends AppCompatActivity {
                     if (task.isSuccessful()) {
                         FirebaseUser user = auth.getCurrentUser();
                         if (user != null) {
-                            saveProfileAndStartSync(user);
+                            Toast.makeText(LoginActivity.this, "Signed in as Guest", Toast.LENGTH_SHORT).show();
+                            saveProfileRestoreAndOpenMain(user);
+                        } else {
+                            setLoading(false);
+                            showError("Guest login succeeded, but the Firebase user could not be loaded.");
                         }
-                        Toast.makeText(LoginActivity.this, "Signed in as Guest", Toast.LENGTH_SHORT).show();
-                        navigateToMain();
                     } else {
                         String msg = task.getException() != null ? task.getException().getMessage() : "Guest login failed.";
                         showError(msg);
@@ -289,21 +294,56 @@ public class LoginActivity extends AppCompatActivity {
     }
 
 
-    /** Save the required Firestore owner document, then retry this account's local backup. */
-    private void saveProfileAndStartSync(FirebaseUser user) {
-        firestoreRepository.saveUserProfile(user, (success, result, error) -> {
-            if (!success) {
-                android.util.Log.e("LoginActivity", "Firestore profile setup failed: " + error);
-                runOnUiThread(() -> Toast.makeText(LoginActivity.this,
-                        "Signed in, but cloud profile setup failed: " + error,
-                        Toast.LENGTH_LONG).show());
-                return;
+    /**
+     * Ensure the user's Firestore profile exists, restore that Firebase UID's previous chats
+     * into SQLite, and only then open MainActivity so its history query sees restored records.
+     * The restore runs before the upload retry to avoid treating an empty local database as
+     * the complete history for a returning account.
+     */
+    private void saveProfileRestoreAndOpenMain(FirebaseUser user) {
+        if (binding != null) setLoading(true);
+        if (user == null) {
+            if (binding != null) setLoading(false);
+            navigateToMain();
+            return;
+        }
+
+        firestoreRepository.saveUserProfile(user, (profileSaved, result, profileError) -> {
+            if (!profileSaved) {
+                android.util.Log.e("LoginActivity", "Firestore profile setup failed; attempting restore anyway: " + profileError);
             }
-            com.edumate.app.repository.SyncRepository.getInstance(getApplicationContext())
-                    .syncPendingSessions((synced, count, message) -> {
-                        if (!synced) android.util.Log.e("LoginActivity", message);
-                        else android.util.Log.i("LoginActivity", message);
-                    });
+
+            com.edumate.app.repository.SyncRepository syncRepository =
+                    com.edumate.app.repository.SyncRepository.getInstance(getApplicationContext());
+            syncRepository.restoreSessionsFromCloud((restored, restoredCount, restoreMessage) -> {
+                if (restored) {
+                    android.util.Log.i("LoginActivity", "Account history restore complete. " + restoreMessage);
+                    if (restoredCount > 0 && !isFinishing()) {
+                        Toast.makeText(LoginActivity.this,
+                                "Restored " + restoredCount + " previous chat(s).",
+                                Toast.LENGTH_LONG).show();
+                    }
+                } else {
+                    android.util.Log.e("LoginActivity", "Could not restore account history: " + restoreMessage);
+                    if (!isFinishing()) {
+                        Toast.makeText(LoginActivity.this,
+                                "Couldn't restore cloud chats right now. Check your internet and try again.",
+                                Toast.LENGTH_LONG).show();
+                    }
+                }
+
+                // Retry uploads only after the restore attempt has finished. This keeps the
+                // existing backup path intact and lets restored sessions be merged back safely.
+                syncRepository.syncPendingSessions((synced, count, message) -> {
+                    if (!synced) android.util.Log.e("LoginActivity", message);
+                    else android.util.Log.i("LoginActivity", message);
+                });
+
+                runOnUiThread(() -> {
+                    if (binding != null) setLoading(false);
+                    if (!isFinishing()) navigateToMain();
+                });
+            });
         });
     }
 

@@ -267,7 +267,19 @@ public class SessionDao {
             cv.put(EduMateDbHelper.COL_MESSAGE_TEXT, message.getMessageText());
             cv.put(EduMateDbHelper.COL_MESSAGE_CREATED_AT, message.getCreatedAt());
 
+            // A restored Firestore message carries its original numeric document ID. Preserve
+            // it when available so the next backup sync updates the same cloud document rather
+            // than creating a duplicate. New local messages have ID 0 and use SQLite autoincrement.
+            if (message.getId() > 0) {
+                cv.put(EduMateDbHelper.COL_MESSAGE_ID, message.getId());
+            }
             long id = db.insert(EduMateDbHelper.TABLE_MESSAGES, null, cv);
+            if (id < 0 && message.getId() > 0) {
+                // Another locally cached account may already own this SQLite ID. Fall back to
+                // a fresh local ID rather than overwriting or dropping that account's message.
+                cv.remove(EduMateDbHelper.COL_MESSAGE_ID);
+                id = db.insert(EduMateDbHelper.TABLE_MESSAGES, null, cv);
+            }
             message.setId(id);
             return id;
         } catch (Throwable t) {
