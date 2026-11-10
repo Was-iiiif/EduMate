@@ -775,14 +775,4 @@ No license terms are specified in this README. Unless a license file is
 added to the repository, all rights remain with the copyright holder and
 reuse or redistribution should be treated as not expressly licensed.
 
-------------------------------------------------------------------------
 
-## Project
-
-**EduMate** --- an AI-assisted learning companion.
-
-Repository: https://github.com/Was-iiiif/EduMate
-
-AI gateway: https://edumate-gemini-proxy.wasifrahman121.workers.dev
-
-Firebase project ID: `edumate-e3b7f`
